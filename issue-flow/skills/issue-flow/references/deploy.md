@@ -1,0 +1,129 @@
+# Deployment monitoring (Stage D)
+
+A merge to the deploy branch usually triggers a build/deploy outside CI (AWS Amplify,
+Vercel, Netlify, a GitHub Actions deploy job, etc.). The PM treats **deploy success as
+part of "done"**: it spawns a background **deploy-watcher** subagent that polls the
+platform and reports back, so the PM never blocks. A failed deploy is never ignored.
+
+## Detecting the deploy target (Phase 0, step 6)
+
+Look for, in order:
+
+1. **AWS Amplify** — an `amplify.yml` at repo root, an `amplify/` dir, or an Amplify app
+   whose hosting is connected to the deploy branch. Confirm/obtain the **app id** and the
+   **branch name** (ask the user if not discoverable). AWS access is via the `aws` CLI or
+   the `mcp__aws-api` tools (`call_aws`, `suggest_aws_commands`).
+2. **GitHub Actions deploy job** — a workflow that deploys on push to the deploy branch.
+   Then deploy status *is* a check run — watch it like CI via `gh run`.
+3. **Vercel / Netlify** — their GitHub app posts a deployment status / commit status;
+   read it via `gh api repos/{owner}/{repo}/deployments` and `.../statuses`, or the
+   provider CLI if authenticated.
+4. **User-supplied** — a deploy-status command or health-check URL the user gives.
+
+If none is found, **skip Stage D** and note that to the user once.
+
+## AWS Amplify queries
+
+Latest job on the branch and its status:
+
+```bash
+# newest job id for the connected branch
+aws amplify list-jobs --app-id <APP_ID> --branch-name <BRANCH> \
+  --max-items 1 --query 'jobSummaries[0].{id:jobId,status:status,commit:commitId}'
+
+# poll one job to completion
+aws amplify get-job --app-id <APP_ID> --branch-name <BRANCH> --job-id <JOB_ID> \
+  --query 'job.summary.status'   # PENDING | PROVISIONING | RUNNING | SUCCEED | FAILED | CANCELLED
+```
+
+Correlate the job's `commitId` with the merge commit so you watch the right deploy. On
+`FAILED`, pull the step logs (the `get-job` response lists steps with `logUrl`; fetch the
+build/deploy step log) and extract the failing step + error. The same calls work through
+`mcp__aws-api` `call_aws` if the CLI isn't directly available.
+
+## The deploy-watcher companion
+
+Spawn the agent type `issue-flow:deploy-watcher` (`run_in_background: true`, **Haiku**,
+self-contained — full prompt in `agents/deploy-watcher.md`). It is **decision-free**: it
+watches and reports, never fixes/labels/merges. Prefer the **companion** mode — one
+standing watcher launched in Phase 0 that monitors the deploy branch continuously and
+returns **one terminal deployment per run**; the PM re-launches it after each report with
+`sinceJobId = lastJobId` to keep it always-on. (Per-merge mode — watch a single `commit`
+— still exists for one-off checks.) Handoff brief:
+
+```
+mode:       companion | per-merge
+provider:   amplify | gh-actions | vercel | netlify | custom
+locator:    { appId, branch } | { runId } | { deploymentUrl } | { command }
+commit:     <merge commit sha>       (per-merge mode)
+sinceJobId: <id>                     (companion mode: ignore deployments at/older than this)
+pollSeconds: 30   maxMinutes: 30
+constraint: watch to a terminal state; report one deployment; do not fix, label, or merge.
+```
+
+Return contract:
+
+```json
+{
+  "type": "object",
+  "required": ["outcome", "detail"],
+  "properties": {
+    "outcome":      { "type": "string", "enum": ["succeeded", "failed", "rolled-back", "timed-out"] },
+    "detail":       { "type": "string" },
+    "commit":       { "type": "string" },
+    "lastJobId":    { "type": "string" },
+    "failingStep":  { "type": "string" },
+    "logExcerpt":   { "type": "string" },
+    "suspectedCause":{ "type": "string", "enum": ["code-regression", "config", "secret", "quota", "infra", "unknown"] }
+  }
+}
+```
+
+After reacting to a verdict, **re-launch the companion** with `sinceJobId = lastJobId`.
+
+## The deploy-verifier agent (browser check)
+
+A green build doesn't prove the app runs. After a deployment reports `succeeded` (and
+optionally for a PR preview), spawn `issue-flow:deploy-verifier` (Sonnet, self-contained —
+`agents/deploy-verifier.md`). It drives a real browser via the **Playwright** and
+**Chrome DevTools** MCP servers (loaded on demand with `ToolSearch`): loads the URL,
+checks HTTP/render/expected-content/console/network, screenshots, and returns
+`verified | broken | unreachable`. Brief:
+
+```
+url:      <deployed or PR-preview URL>
+commit:   <sha that produced the deploy>
+expect:   <optional text/selectors that must be present>
+issue/pr: #<n> / PR #<m>
+```
+
+Requires a browser MCP connected (`playwright`, `chrome-devtools`) — `claude mcp add ...`.
+If none is available, the verifier degrades to an HTTP/content check via `WebFetch`/`curl`
+and says so. A `broken`/`unreachable` verdict flows into the same hotfix / needs-feedback
+routing as a deploy failure.
+
+## PM reaction (Stage D)
+
+Every non-verified terminal outcome first gets **`status:deploy-failed`** on the tracking
+issue (replacing `status:deploying`), then routes by cause. That label is what Phase 0
+recovery looks for when it re-adopts a deployment whose hotfix never landed. The PM
+removes it when the fix deploys and verifies.
+
+| outcome | PM action |
+|---|---|
+| `succeeded` | **Verify before declaring done** — build-green ≠ working. Spawn `issue-flow:deploy-verifier` against the deployed URL. On `verified`: remove `status:deploying`, comment confirmation + screenshot. On `broken`/`unreachable`: treat as a deploy failure (rows below). |
+| `failed` / `rolled-back` (suspectedCause `code-regression`) | Add `status:deploy-failed`, then open a `priority:high` `type:hotfix` `status:ready` **hotfix issue** citing the failed deploy, commit, failing step, and log excerpt. Hotfixes **bypass batching**: schedule a standalone worker immediately (`ci: run`, normal PR straight to dev). |
+| `failed` (suspectedCause `config`/`secret`/`quota`/`infra`) | Add `status:deploy-failed`, then route for **human input**: `status:needs-feedback` (or `status:blocked` for an active outage), name the cause, surface to the user. Do not guess at infra/secret changes. |
+| `timed-out` | Re-query once; if still not terminal, surface to the user with the job link — don't assume success. Leave `status:deploying` in place. |
+
+A hotfix issue flows worker → PR (CI on, no batch) → merge → **Stage D again**, so a
+deploy that fails twice keeps producing fixes until it goes green or is parked for the
+user.
+
+## Recovery note
+
+Phase 0 state recovery re-adopts deploys: if the companion isn't running (fresh session, crash,
+or post-compaction), relaunch it in companion mode with `sinceJobId` = the latest current
+deployment. Then check for any recently merged PR whose deployment was never confirmed (no
+success comment, no open hotfix) and reconcile it from the companion's next report or a
+one-off per-merge run for that commit.

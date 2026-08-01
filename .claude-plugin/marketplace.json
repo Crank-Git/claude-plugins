@@ -1,0 +1,28 @@
+{
+  "name": "sniper7kills",
+  "description": "Claude Code plugins from Sniper7Kills LLC.",
+  "owner": {
+    "name": "Sniper7Kills LLC",
+    "email": "sniper7kills@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "issue-flow",
+      "source": "./issue-flow",
+      "version": "0.9.0",
+      "category": "workflow",
+      "description": "Autonomous development loop driven by GitHub Issues: spec → issues → batched builds → one CI run per batch → browser-verified deploy → user-viewpoint review.",
+      "keywords": [
+        "github",
+        "issues",
+        "automation",
+        "project-management",
+        "spec-driven"
+      ],
+      "author": {
+        "name": "sniper7kills",
+        "email": "sniper7kills@gmail.com"
+      }
+    }
+  ]
+}

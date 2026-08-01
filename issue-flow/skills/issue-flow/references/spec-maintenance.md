@@ -1,0 +1,73 @@
+# Keeping the spec honest (PM-facing)
+
+`project-planner` writes `docs/specs/`, and the project's `CLAUDE.md` tells every future
+session to read it before building a feature. That instruction is only safe if the spec
+still describes the app. The PM makes decisions during the loop that change the product —
+ship-partial calls, answers to parked questions, hotfixes that alter behaviour — and
+none of them reach the spec on their own.
+
+Skip this entirely when there is no `docs/specs/spec.md`; issue-flow works fine on a
+plain tracker.
+
+## Two mechanisms, different weights
+
+**1. Changelog line — every scope decision, immediately.**
+
+Cheap, always. At the batch gate, append to `docs/specs/spec.md` § Changelog:
+
+```markdown
+- 2026-07-27 — Batch #42 shipped without the CSV export sub-issue (#57). #57 is parked on
+  a product question and moves to a later batch.
+- 2026-07-27 — Answered #53. The project rejects a duplicate email address. It does not
+  merge the two accounts.
+```
+
+One entry per decision, dated, naming the issue or PR. Write it in STE
+([ste.md](../../../references/ste.md)): one sentence per fact, active voice, present
+tense. Commit it with the batch. This is an audit trail, not a rewrite — it tells the next
+reader that the spec and reality diverged here, and why.
+
+**2. `type:spec-update` issue — when documented behaviour actually changed.**
+
+A changelog line is not enough when a `features/*.md` now *describes the wrong product*:
+an FR was dropped, acceptance criteria were renegotiated, an interface contract changed,
+a data-model field was added or removed. In that case file a `type:spec-update` issue:
+
+- Title: `Spec update: <feature> — <what changed>`
+- Body: the feature file path, the sections that are now wrong, quotes of both the
+  current spec text and what actually shipped, and links to the issues/PRs that caused
+  it. Marker `<!-- spec:<slug> feature:<feature-id> -->`.
+- Label `type:spec-update` + `status:ready`.
+
+It is worked like any other issue — a worker edits the spec files (and only the spec
+files) and opens a normal PR. That keeps the deep edit out of the PM's context and gets
+it reviewed like everything else.
+
+Do **not** let a worker rewrite the spec as a side effect of building a feature. Spec
+edits are their own issue, so the change is visible and reviewable rather than buried in
+a feature diff.
+
+## Feature status lifecycle
+
+Feature files carry `status: planned | issued | built`:
+
+| Transition | Who | When |
+|---|---|---|
+| (new) → `planned` | project-planner | the feature is written into the spec |
+| `planned` → `issued` | spec-to-issues | its issues are created (records their numbers) |
+| `issued` → `built` | the PM | its last issue closes at a batch gate |
+
+Advance the status at the batch gate along with the changelog line. This is what lets a
+later planning wave re-run `/project-planner` and `/spec-to-issues` without re-issuing
+work that already shipped — dedup keys on the feature `id`, and `built` features are
+skipped.
+
+## What not to write back
+
+- Implementation detail. The spec is product design; how it was built lives in the code
+  and the PR.
+- Every issue that closed — that's the `## Issue map`, already maintained by
+  `spec-to-issues`.
+- Anything on a feature another operator is actively re-planning (check for open
+  `type:spec-update` issues first, and edit only your own marker blocks in shared
+  bodies).

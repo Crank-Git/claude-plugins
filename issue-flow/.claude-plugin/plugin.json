@@ -1,0 +1,24 @@
+{
+  "name": "issue-flow",
+  "version": "0.9.0",
+  "description": "Autonomous development loop driven by GitHub Issues: plan a spec, decompose it into epics and sub-issues, build them with background worker agents on batched integration branches (one CI run per batch), verify the deploy in a real browser, then user-test the result and file what it finds. Four skills, six agents. Everything it writes — specs, issues, comments, manual pages and code comments — follows a Simplified Technical English standard.",
+  "keywords": [
+    "github",
+    "issues",
+    "automation",
+    "project-management",
+    "spec-driven",
+    "code-review",
+    "ci",
+    "deployment",
+    "qa",
+    "ste"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/Sniper7Kills-LLC/claude-plugins/tree/main/issue-flow",
+  "repository": "https://github.com/Sniper7Kills-LLC/claude-plugins",
+  "author": {
+    "name": "sniper7kills",
+    "email": "sniper7kills@gmail.com"
+  }
+}
