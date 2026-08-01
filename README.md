@@ -17,9 +17,16 @@ Restart the session after you install a plugin, so its skills and agents load.
 
 ## Develop a plugin in this repository
 
+Work on `dev`. Merge `dev` into `main` to release.
+
+```
+feature branch → dev → main → tag
+```
+
 Validate a manifest before you commit it:
 
 ```bash
+python3 scripts/validate-manifests.py    # every plugin: versions, frontmatter, links
 claude plugin validate .                 # the marketplace manifest
 claude plugin validate ./issue-flow      # one plugin and all its components
 ```
@@ -30,14 +37,25 @@ Test a change without publishing it. Add this checkout as a local marketplace:
 claude plugin marketplace add ~/claude-plugins
 ```
 
-Release a version. First set the same version in the plugin's `plugin.json` and in its
-entry in `.claude-plugin/marketplace.json`. Then create the tag:
+## Release a version
+
+1. Raise the version in the plugin's `plugin.json` **and** in its entry in
+   `.claude-plugin/marketplace.json`. The two must match.
+2. Open a pull request into `dev`. The **Validate** workflow checks the manifests, the
+   skill and agent frontmatter, and every relative documentation link.
+3. Merge `dev` into `main`.
+4. The **Tag release** workflow reads each plugin's version from the marketplace and
+   creates the matching `{name}--v{version}` tag.
+
+The tag workflow is idempotent. It skips any version that is already tagged, so a merge
+that changes no version creates no tag. It validates the tree before it tags, so a broken
+manifest never gets a release.
+
+To tag from your own machine instead, use the plugin CLI:
 
 ```bash
 claude plugin tag ./issue-flow --push
 ```
-
-The command validates that the two versions agree before it tags.
 
 ## License
 

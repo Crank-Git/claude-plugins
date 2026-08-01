@@ -1,0 +1,78 @@
+name: Tag release
+
+# Tags a plugin release when main changes, which is when dev merges into main.
+#
+# The tag name matches what `claude plugin tag` creates: {name}--v{version}. The version
+# comes from the marketplace entry, and validate.yml has already checked that the entry
+# and the plugin's own plugin.json agree. A version that is already tagged is skipped, so
+# a merge that changes no version tags nothing.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      # Never tag a commit that would fail review.
+      - name: Validate before tagging
+        run: python3 scripts/validate-manifests.py
+
+      - name: Create the missing tags
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          git fetch --tags --quiet
+
+          created=0
+          while IFS=$'\t' read -r name version; do
+            if [ -z "$version" ] || [ "$version" = "None" ]; then
+              echo "skip $name — the marketplace entry declares no version"
+              continue
+            fi
+
+            tag="${name}--v${version}"
+            if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+              echo "skip $tag — the tag already exists"
+              continue
+            fi
+
+            echo "tag  $tag"
+            git tag -a "$tag" -m "${name} ${version}"
+            git push origin "refs/tags/${tag}"
+            created=$((created + 1))
+            echo "- \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
+          done < <(python3 - <<'PY'
+          import json
+
+          with open(".claude-plugin/marketplace.json") as handle:
+              marketplace = json.load(handle)
+
+          for entry in marketplace.get("plugins", []):
+              print(f"{entry['name']}\t{entry.get('version')}")
+          PY
+          )
+
+          if [ "$created" -eq 0 ]; then
+            echo "No new tags. Every declared version is already tagged." >> "$GITHUB_STEP_SUMMARY"
+          fi
