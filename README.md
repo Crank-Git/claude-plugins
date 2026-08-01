@@ -7,34 +7,37 @@ claude plugin marketplace add Sniper7Kills-LLC/claude-plugins
 claude plugin install issue-flow@sniper7kills
 ```
 
-Restart the session after installing so the plugin's skills and agents load.
+Restart the session after you install a plugin, so its skills and agents load.
 
 ## Plugins
 
 | Plugin | What it does |
 |---|---|
-| [**issue-flow**](issue-flow/) | Autonomous development loop driven by GitHub Issues: plan a spec, decompose it into epics and sub-issues, build them with background worker agents on batched integration branches (one CI run per batch), verify the deploy in a real browser, then user-test the result and file what it finds. |
+| [**issue-flow**](issue-flow/) | Drives an autonomous development loop from GitHub Issues. It plans a spec, decomposes it into epics and sub-issues, and builds each one with a background worker agent on a batched integration branch. CI runs once per batch. A browser check verifies the deployment, and a user-viewpoint review files what it finds. |
 
-## Working on a plugin here
+## Develop a plugin in this repository
 
-Validate a plugin or the marketplace manifest before committing:
+Validate a manifest before you commit it:
 
 ```bash
 claude plugin validate .                 # the marketplace manifest
 claude plugin validate ./issue-flow      # one plugin and all its components
 ```
 
-Tag a release once `plugin.json` and the marketplace entry agree on the version:
+Test a change without publishing it. Add this checkout as a local marketplace:
+
+```bash
+claude plugin marketplace add ~/claude-plugins
+```
+
+Release a version. First set the same version in the plugin's `plugin.json` and in its
+entry in `.claude-plugin/marketplace.json`. Then create the tag:
 
 ```bash
 claude plugin tag ./issue-flow --push
 ```
 
-To try a change without publishing it, add this checkout as a local marketplace:
-
-```bash
-claude plugin marketplace add ~/claude-plugins
-```
+The command validates that the two versions agree before it tags.
 
 ## License
 
