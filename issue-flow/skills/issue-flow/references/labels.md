@@ -1,6 +1,6 @@
 # Standard label taxonomy
 
-Status labels form the state machine. An issue carries **at most one** `status:` label at a time. Create missing labels with `gh label create <name> --color <hex> --description "<desc>"`.
+Status labels form the state machine. An issue carries **at most one** `status:` label at a time. Create missing labels with `forge.label.create`.
 
 ## Status (required set)
 
@@ -77,6 +77,8 @@ Every transition gets a comment explaining it. Labels say *what* state; comments
 
 ## Bootstrap command
 
+**GitHub — `gh`:**
+
 ```bash
 gh label create "status:ready"          --color 0E8A16 --description "Triaged and available to work" --force
 gh label create "status:in-progress"    --color 1D76DB --description "Agent actively working" --force
@@ -98,3 +100,56 @@ gh label create "priority:low"          --color C2E0C6 --description "Pick last"
 ```
 
 (`--force` makes the command idempotent — it updates color/description if the label exists.)
+
+**Gitea — `tea`:**
+
+`tea labels create` has no `--force` equivalent. Run it twice on the same name and it
+does not update or error — it **silently creates a second label with that name**, and
+the state machine then has two IDs for one status. The block below guards against this:
+it reads the existing labels first and creates only the ones missing.
+
+```bash
+existing="$(tea labels list --output tsv | tail -n +2 | cut -f3)"
+
+printf '%s\n' "$existing" | grep -qxF "status:ready" ||
+tea labels create --name "status:ready"          --color "#0E8A16" --description "Triaged and available to work"
+printf '%s\n' "$existing" | grep -qxF "status:in-progress" ||
+tea labels create --name "status:in-progress"    --color "#1D76DB" --description "Agent actively working"
+printf '%s\n' "$existing" | grep -qxF "status:in-review" ||
+tea labels create --name "status:in-review"      --color "#5319E7" --description "Sub-PR open, review in flight"
+printf '%s\n' "$existing" | grep -qxF "status:batched" ||
+tea labels create --name "status:batched"        --color "#BFD4F2" --description "Sub-merged to integration branch, awaiting batch PR"
+printf '%s\n' "$existing" | grep -qxF "status:deploying" ||
+tea labels create --name "status:deploying"      --color "#0052CC" --description "Merged; deployment being monitored"
+printf '%s\n' "$existing" | grep -qxF "status:deploy-failed" ||
+tea labels create --name "status:deploy-failed"  --color "#B60205" --description "Deployment failed; see comment"
+printf '%s\n' "$existing" | grep -qxF "status:awaiting-review" ||
+tea labels create --name "status:awaiting-review" --color "#FEF2C0" --description "Awaiting a human approving review before merge"
+printf '%s\n' "$existing" | grep -qxF "status:blocked" ||
+tea labels create --name "status:blocked"        --color "#D93F0B" --description "Blocked; see comment for blocker"
+printf '%s\n' "$existing" | grep -qxF "status:needs-feedback" ||
+tea labels create --name "status:needs-feedback" --color "#FBCA04" --description "Awaiting user decision"
+printf '%s\n' "$existing" | grep -qxF "type:epic" ||
+tea labels create --name "type:epic"             --color "#5319E7" --description "Decomposed into sub-issues; epic batch"
+printf '%s\n' "$existing" | grep -qxF "type:batch" ||
+tea labels create --name "type:batch"            --color "#C5DEF5" --description "Loose-issue batch tracking issue"
+printf '%s\n' "$existing" | grep -qxF "type:hotfix" ||
+tea labels create --name "type:hotfix"           --color "#B60205" --description "Deploy hotfix; bypasses batching"
+printf '%s\n' "$existing" | grep -qxF "type:spec-update" ||
+tea labels create --name "type:spec-update"      --color "#D4C5F9" --description "Spec diverged from shipped behaviour; edits docs/specs only"
+printf '%s\n' "$existing" | grep -qxF "review:finding" ||
+tea labels create --name "review:finding"        --color "#F9D0C4" --description "Found by a project-review run"
+printf '%s\n' "$existing" | grep -qxF "flow:status" ||
+tea labels create --name "flow:status"           --color "#EDEDED" --description "Session status issue; not schedulable"
+printf '%s\n' "$existing" | grep -qxF "priority:high" ||
+tea labels create --name "priority:high"         --color "#B60205" --description "Pick first"
+printf '%s\n' "$existing" | grep -qxF "priority:low" ||
+tea labels create --name "priority:low"          --color "#C2E0C6" --description "Pick last"
+```
+
+**`--output tsv` needs no external interpreter.** The header row is
+`Index<TAB>Color<TAB>Name<TAB>Description<TAB>Level`; `tail -n +2` drops it and `cut -f3`
+takes the name column. `printf '%s\n' "$existing" | grep -qxF` avoids the `<<<` herestring,
+which is a bash extension `sh` does not have. On a repository with no labels, `$existing`
+is empty and every `grep` misses, so the block creates all seventeen labels — the same
+outcome as before.

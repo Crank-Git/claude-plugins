@@ -45,10 +45,11 @@ Two mechanisms, layered:
 
 1. **`[skip ci]` in the head commit message.** GitHub Actions natively skips `push` and
    `pull_request` triggered workflows when the head commit message contains `[skip ci]`
-   (or `[ci skip]`). Workers append it to **every pushed head commit**; that keeps the
-   draft PR CI-free through readying and merging too.
+   (or `[ci skip]`); Gitea Actions does the same from Gitea 1.20. Workers append it to
+   **every pushed head commit**; that keeps the draft PR CI-free through readying and
+   merging too.
 2. **Draft PRs.** Sub-PRs open as drafts — signals "not for dev" to humans and to any
-   bot keyed on ready state. (Draft alone does **not** stop GitHub Actions — `[skip ci]`
+   bot keyed on ready state. (Draft alone does **not** stop either provider — `[skip ci]`
    does the work.)
 
 Phase 0 sanity-checks that the project's CI honors `[skip ci]`. If it can't (other
@@ -75,9 +76,9 @@ unchanged.
 2. Behind/conflicting with the integration branch (a sibling landed) → update the
    branch; mechanical conflicts resolved directly or by a short-lived worker with both
    issues' context; **semantic** conflicts → `status:needs-feedback` on both issues.
-3. `gh pr ready <pr> && gh pr merge <pr> --squash --delete-branch` — one clean squashed
-   commit per member on the integration branch. Head commit carries `[skip ci]`, so this
-   stays CI-free.
+3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
+   one clean squashed commit per member on the integration branch. Head commit carries
+   `[skip ci]`, so this stays CI-free.
 4. Member → `status:batched`; tick the tracking checklist; tear down the worktree;
    launch any sequenced successor.
 
