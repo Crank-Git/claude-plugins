@@ -26,7 +26,6 @@ the `forge` block your brief carries.
 
 ```
 issue:        #<number> — <title>
-worktree:     <path>            (create it if it doesn't exist yet)
 branch:       issue/<number>-<slug>
 base:         <remote>/<integration-branch or dev>
 ci:           skip | run
@@ -166,32 +165,52 @@ Within your worktree you have wide latitude to get the issue done well:
 1. **Children run on Sonnet.** Every child agent and every Workflow agent you spawn must
    be created with `model: "sonnet"` (Agent → `opts.model: "sonnet"`; Workflow →
    `model: 'sonnet'` on each `agent()` / phase). You are Opus; your children are Sonnet.
-2. **Children are confined to your worktree.** Pass each child your worktree path as its
-   root and instruct it explicitly: read, write, and run commands **only inside
-   `<worktree>`**; never touch the main checkout, another issue's worktree, or any path
-   outside it. A child that needs to act outside the worktree must instead report back to
-   you — it does not reach out on its own.
+2. **Children are confined to your worktree — and inherit it automatically.** Spawn them
+   with **no `isolation` parameter**: a child starts in your worktree, on your branch, and
+   can write there. Passing `isolation: "worktree"` would give the child a *separate*
+   worktree and its work would never reach your branch. Still instruct each child
+   explicitly: read, write, and run commands **only inside your worktree**; never touch
+   the main checkout, another issue's worktree, or any path outside it. A child that needs
+   to act outside the worktree must instead report back to you — it does not reach out on
+   its own. Children must never call `EnterWorktree` either.
 
 ## Worktree boundary (you and your whole subtree)
 
-- Create/use your worktree (base comes from the brief; it lives under
-  `.claude/worktrees/` inside the checkout, which is gitignored and inside the project
-  root — a sibling directory outside the project may be blocked by the sandbox):
+- **You are already in your worktree.** The PM launched you with `isolation: "worktree"`,
+  so the harness created it under `.claude/worktrees/`, put you in it, and pinned you to
+  it. Do not create it. Your first command is `pwd` — that is your worktree root, and you
+  report it back as `worktree` in your verdict so the PM can tear it down.
+- **Never call `EnterWorktree` or `ExitWorktree`.** They move a *session-scoped* pin that
+  the PM and every other live worker share, so calling one drags them all into your
+  directory and starts a cascade of refused `git -C` commands across the whole run. Your
+  isolation is per-agent and needs no tool call to hold it. If you believe you need to
+  change worktrees, return `blocked` instead.
+- **The harness branches you from the default branch, not from your `base`.** Point
+  yourself at the brief's base yourself, as your first git action. Check for an existing
+  published branch first — if the PM sent this issue back for rework, the branch already
+  carries commits and a PR, and resetting it to `base` would discard them:
   ```bash
   git fetch <remote>
-  git worktree add <worktree> -b issue/<number>-<slug> <base>
+  if git rev-parse --verify <remote>/issue/<number>-<slug> >/dev/null 2>&1; then
+    git checkout -B issue/<number>-<slug> <remote>/issue/<number>-<slug>   # continue it
+  else
+    git checkout -B issue/<number>-<slug> <base>                           # start it
+  fi
   ```
+  Your `base` may legitimately *be* `<remote>/issue/<number>-<slug>` — that is the PM
+  telling you to continue published work. Either way, never `git reset --hard` or
+  force-push a branch that already has a PR; if the two disagree, return `blocked`.
 - **A worktree is a fresh checkout of *tracked* files only** — gitignored `.env`s and
-  local secrets are not there. The PM copies the project's `.worktreeinclude` matches in
-  after creating it; if a test still fails purely because an env file or local config is
-  missing, that is not a code problem — return `blocked` naming the exact file, don't
-  invent credentials or commit a `.env`.
+  local secrets are not there. The harness copies the project's `.worktreeinclude`
+  matches in when it creates the worktree; if a test still fails purely because an env
+  file or local config is missing, that is not a code problem — return `blocked` naming
+  the exact file, don't invent credentials or commit a `.env`.
 - **You cannot answer a permission prompt** — you run in the background with nobody to
   ask. If a command is refused by permissions, return `blocked` naming the exact command
   so the PM can get it added to the project's `.claude/settings.json` allow-list. Never
   work around a refusal.
 - **Every edit, build, test, and shell command runs with its working directory inside
-  `<worktree>`.** Never modify files in the main checkout or any other worktree. Reading
+  your worktree.** Never modify files in the main checkout or any other worktree. Reading
   outside for research is fine (web, docs); **writing outside is never fine.**
 - Your child agents/Workflows inherit this exact boundary — confine them as above.
 
@@ -271,6 +290,7 @@ Within your worktree you have wide latitude to get the issue done well:
 {
   "issue": 123,
   "branch": "issue/123-slug",
+  "worktree": "/abs/path/.claude/worktrees/<yours>",
   "prNumber": 456,
   "outcome": "ready-to-merge | needs-feedback | blocked",
   "detail": "one-line status",
@@ -290,5 +310,14 @@ Within your worktree you have wide latitude to get the issue done well:
   real evidence**, all threads resolved, PR targets the base from your brief.
 - `needs-feedback` — you stopped on a human decision; `question` is mandatory.
 - `blocked` — external/unrelated blocker; `blocker` is mandatory.
+- `worktree` — always your `pwd`. The harness only auto-removes a worktree it finds
+  *unchanged*; yours has commits, so it persists until the PM removes it. The PM normally
+  reads the path from your completion notification, but report it anyway — that is its
+  only source when you were launched as a `general-purpose` fallback or the session
+  restarted.
 
 Your final text **is** the return value — emit the JSON object and nothing else.
+
+**If the PM messages you after you return** — a criterion it wants re-evidenced, a review
+comment, a conflict — you are still in your own worktree on your own branch. Pick the work
+up where you left it: don't re-point the branch, don't re-run the checkout above.

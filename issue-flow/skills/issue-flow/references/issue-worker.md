@@ -8,7 +8,9 @@ to react to what it returns.
 ## Launch
 
 Spawn with `Agent`, `agentType: "issue-flow:issue-worker"`, `run_in_background: true`,
-one per claimed issue, up to `concurrency` at once (across all live batches).
+**`isolation: "worktree"`**, one per claimed issue, up to `concurrency` at once (across
+all live batches). `isolation: "worktree"` is not optional — it is what keeps concurrent
+workers apart. See [worktrees.md](worktrees.md) for what goes wrong without it.
 Sequenced batch members (dependency chains) launch only after their predecessor
 sub-merges. The PM is notified when each finishes — it does **not** sit and wait.
 (Fallback if the type won't resolve: spawn `general-purpose` and prepend the brief with
@@ -25,9 +27,11 @@ worker completion.
 
 ```
 issue:        #<number> — <title>
-worktree:     .claude/worktrees/issue-<number>   (worker creates it if missing)
-branch:       issue/<number>-<slug>
-base:         <remote>/epic/<n>-<slug>   (the integration branch; <remote>/<dev> only for standalone/hotfix)
+branch:       issue/<number>-<slug>   (the worker checks this out in the worktree the
+                                       harness gave it; the PM passes no worktree path)
+base:         <remote>/epic/<n>-<slug>   (the integration branch; <remote>/<dev> only for standalone/hotfix.
+                                       On a re-spawn for rework, pass <remote>/issue/<number>-<slug> —
+                                       the branch already has commits and a PR. See Rework below.)
 ci:           skip | run               (skip = batch member: draft PR, [skip ci] commits, local checks.
                                         run = standalone/hotfix: normal PR, watch provider CI)
 batch:        epic #<n> | batch #<n> | standalone
@@ -57,13 +61,36 @@ of the worker's **definition of done** — not advice. A worker that cannot sati
 returns `needs-feedback` naming the practice; the PM checks them at the sub-merge gate
 and does not waive them there.
 
-**Before launching, make the worktree usable.** Create it under `.claude/worktrees/`
-(inside the checkout, gitignored, and inside the project root so the sandbox permits
-writes), then copy the project's `.worktreeinclude` matches into it — a worktree is a
-fresh checkout of *tracked* files, so `.env` and local secrets are otherwise missing and
-env-dependent suites fail as `blocked`. And remember the worker **cannot answer a
-permission prompt**: every command it needs must already be in the committed
-`.claude/settings.json` allow-list.
+**Do not create the worktree.** `isolation: "worktree"` makes the harness create it under
+`.claude/worktrees/`, pin the worker to it, and copy the project's `.worktreeinclude`
+matches in. The PM learns the path from the worker's **completion notification** (a
+`<worktree>` block carrying `worktreePath` and `worktreeBranch`); the worker also reports
+its `pwd` as `worktree` in its verdict as the fallback source. Either way the PM never
+needs (and never passes) a path in. The PM's job is
+to keep `.worktreeinclude` accurate — a worktree is a fresh checkout of *tracked* files,
+so `.env` and local secrets are otherwise missing and env-dependent suites fail as
+`blocked`. And remember the worker **cannot answer a permission prompt**: every command
+it needs must already be in the committed `.claude/settings.json` allow-list.
+
+## Rework: message the same worker, don't spawn a new one
+
+Several gates send an issue **back to the worker** — an unevidenced criterion, a missed
+practice, a review comment, a conflict to resolve. Two mechanisms, and they are not
+equivalent:
+
+- **Preferred — `SendMessage` to the worker that returned the verdict** (by its agent id
+  or name). It keeps its context, its per-agent worktree, and its branch already checked
+  out, so nothing is re-pointed and nothing can be lost. Name workers predictably at
+  launch (`worker-<issue>`) so they stay addressable.
+- **Fallback — re-spawn**, when the worker is gone (session restarted, or it is no longer
+  addressable). A re-spawn is a **new agent in a new empty worktree on the default
+  branch**, so the brief must carry `base: <remote>/issue/<number>-<slug>` — the published
+  branch — plus the plan, the PR number, and what the gate rejected. Passing the
+  integration branch as `base` here would reset the issue branch and orphan the PR's
+  commits.
+
+Either way the PM tears the worktree down only once the issue is `status:batched` or
+terminally parked — not between rework rounds.
 
 ## Return contract
 
@@ -76,6 +103,7 @@ The worker returns exactly this object as its final message:
   "properties": {
     "issue":      { "type": "number" },
     "branch":     { "type": "string" },
+    "worktree":   { "type": "string", "description": "the worker's own worktree path (its pwd) — the PM's fallback handle for teardown when the completion notification is unavailable" },
     "prNumber":   { "type": "number" },
     "outcome":    { "type": "string", "enum": ["ready-to-merge", "needs-feedback", "blocked"] },
     "detail":     { "type": "string" },
@@ -94,7 +122,7 @@ The worker returns exactly this object as its final message:
 
 | outcome | PM action (the gate) |
 |---|---|
-| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash`; label `status:batched`, tick the tracking checklist, tear down the worktree, launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: merge to dev, Stage D directly. |
+| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker via `SendMessage`, see Rework; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash`; label `status:batched`, tick the tracking checklist, remove the worktree it reported (`git worktree remove --force <worktree>`; `git worktree prune`), launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: merge to dev, Stage D directly. |
 | `needs-feedback` | Label `status:needs-feedback`, post `question` as an issue comment, park per the feedback policy (notify; ask interactively only when it gates work). Free the slot. |
 | `blocked` | Label `status:blocked`, comment naming `blocker`. Free the slot. |
 
