@@ -26,7 +26,6 @@ the `forge` block your brief carries.
 
 ```
 issue:        #<number> — <title>
-worktree:     <path>            (create it if it doesn't exist yet)
 branch:       issue/<number>-<slug>
 base:         <remote>/<integration-branch or dev>
 ci:           skip | run
@@ -166,26 +165,36 @@ Within your worktree you have wide latitude to get the issue done well:
 1. **Children run on Sonnet.** Every child agent and every Workflow agent you spawn must
    be created with `model: "sonnet"` (Agent → `opts.model: "sonnet"`; Workflow →
    `model: 'sonnet'` on each `agent()` / phase). You are Opus; your children are Sonnet.
-2. **Children are confined to your worktree.** Pass each child your worktree path as its
-   root and instruct it explicitly: read, write, and run commands **only inside
-   `<worktree>`**; never touch the main checkout, another issue's worktree, or any path
-   outside it. A child that needs to act outside the worktree must instead report back to
-   you — it does not reach out on its own.
+2. **Children are confined to your worktree — and inherit it automatically.** Spawn them
+   with **no `isolation` parameter**: a child starts in your worktree, on your branch, and
+   can write there. Passing `isolation: "worktree"` would give the child a *separate*
+   worktree and its work would never reach your branch. Still instruct each child
+   explicitly: read, write, and run commands **only inside your worktree**; never touch
+   the main checkout, another issue's worktree, or any path outside it. A child that needs
+   to act outside the worktree must instead report back to you — it does not reach out on
+   its own. Children must never call `EnterWorktree` either.
 
 ## Worktree boundary (you and your whole subtree)
 
-- Create/use your worktree (base comes from the brief; it lives under
-  `.claude/worktrees/` inside the checkout, which is gitignored and inside the project
-  root — a sibling directory outside the project may be blocked by the sandbox):
+- **You are already in your worktree.** The PM launched you with `isolation: "worktree"`,
+  so the harness created it under `.claude/worktrees/`, put you in it, and pinned you to
+  it. Do not create it. Your first command is `pwd` — that is your worktree root.
+- **Never call `EnterWorktree` or `ExitWorktree`.** They move a *session-scoped* pin that
+  the PM and every other live worker share, so calling one drags them all into your
+  directory and starts a cascade of refused `git -C` commands across the whole run. Your
+  isolation is per-agent and needs no tool call to hold it. If you believe you need to
+  change worktrees, return `blocked` instead.
+- **The harness branches you from the default branch, not from your `base`.** Point
+  yourself at the brief's base yourself, as your first git action:
   ```bash
   git fetch <remote>
-  git worktree add <worktree> -b issue/<number>-<slug> <base>
+  git checkout -B issue/<number>-<slug> <base>
   ```
 - **A worktree is a fresh checkout of *tracked* files only** — gitignored `.env`s and
-  local secrets are not there. The PM copies the project's `.worktreeinclude` matches in
-  after creating it; if a test still fails purely because an env file or local config is
-  missing, that is not a code problem — return `blocked` naming the exact file, don't
-  invent credentials or commit a `.env`.
+  local secrets are not there. The harness copies the project's `.worktreeinclude`
+  matches in when it creates the worktree; if a test still fails purely because an env
+  file or local config is missing, that is not a code problem — return `blocked` naming
+  the exact file, don't invent credentials or commit a `.env`.
 - **You cannot answer a permission prompt** — you run in the background with nobody to
   ask. If a command is refused by permissions, return `blocked` naming the exact command
   so the PM can get it added to the project's `.claude/settings.json` allow-list. Never

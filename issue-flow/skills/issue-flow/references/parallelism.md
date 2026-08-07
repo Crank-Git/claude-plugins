@@ -49,13 +49,16 @@ simultaneously, **each in its own worktree**. Members of a dependency chain are 
 exception to "launch whenever a slot frees": they run **sequentially** within their
 batch — each launches after its predecessor sub-merges into the integration branch.
 
-Setup per issue (base = the batch's integration branch; `<remote>/<dev>` only for
-standalone/hotfix work — see [batching.md](batching.md)):
+Setup per issue: the PM creates no worktree. It launches the worker with
+`isolation: "worktree"` and the harness makes one under `.claude/worktrees/`, pinned to
+that worker alone (see [worktrees.md](worktrees.md)). The worker then points its worktree
+at its base (the batch's integration branch; `<remote>/<dev>` only for standalone/hotfix
+work — see [batching.md](batching.md)):
 
 ```bash
-# from the main checkout
+# inside the worker's own worktree
 git fetch <remote>
-git worktree add .claude/worktrees/issue-<number> -b issue/<number>-<slug> <remote>/epic/<n>-<slug>
+git checkout -B issue/<number>-<slug> <remote>/epic/<n>-<slug>
 ```
 
 - `<remote>` is detected in preflight (`git remote` — usually `origin` but never

@@ -226,9 +226,10 @@ Required:
 
 - The provider's CLI, installed and authenticated: `gh auth login` (GitHub) or
   `tea logins add` (Gitea), with the `repo` and `workflow` scopes.
-- `git` 2.5 or later, for worktrees. The plugin creates each per-issue worktree **inside
-  the checkout**, at `.claude/worktrees/` (gitignored), so a sandboxed Bash tool can write
-  to it.
+- `git` 2.5 or later, for worktrees. Each worker runs with `isolation: "worktree"`, so
+  Claude Code creates its worktree **inside the checkout**, at `.claude/worktrees/`
+  (gitignored), and pins that worker to it. Add gitignored build inputs (`.env` and
+  friends) to a `.worktreeinclude` at the repo root and they are copied in for you.
 - CI that honors `[skip ci]`. GitHub Actions honors it natively; Gitea Actions does the
   same from Gitea 1.20. If your provider does not, the PM proposes a one-time workflow
   filter for the `epic/**` and `batch/**` branches, or falls back to local sub-merges with

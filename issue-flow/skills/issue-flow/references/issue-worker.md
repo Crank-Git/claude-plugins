@@ -8,7 +8,9 @@ to react to what it returns.
 ## Launch
 
 Spawn with `Agent`, `agentType: "issue-flow:issue-worker"`, `run_in_background: true`,
-one per claimed issue, up to `concurrency` at once (across all live batches).
+**`isolation: "worktree"`**, one per claimed issue, up to `concurrency` at once (across
+all live batches). `isolation: "worktree"` is not optional — it is what keeps concurrent
+workers apart. See [worktrees.md](worktrees.md) for what goes wrong without it.
 Sequenced batch members (dependency chains) launch only after their predecessor
 sub-merges. The PM is notified when each finishes — it does **not** sit and wait.
 (Fallback if the type won't resolve: spawn `general-purpose` and prepend the brief with
@@ -25,8 +27,8 @@ worker completion.
 
 ```
 issue:        #<number> — <title>
-worktree:     .claude/worktrees/issue-<number>   (worker creates it if missing)
-branch:       issue/<number>-<slug>
+branch:       issue/<number>-<slug>   (the worker checks this out in the worktree the
+                                       harness gave it; the PM passes no worktree path)
 base:         <remote>/epic/<n>-<slug>   (the integration branch; <remote>/<dev> only for standalone/hotfix)
 ci:           skip | run               (skip = batch member: draft PR, [skip ci] commits, local checks.
                                         run = standalone/hotfix: normal PR, watch provider CI)
@@ -57,13 +59,13 @@ of the worker's **definition of done** — not advice. A worker that cannot sati
 returns `needs-feedback` naming the practice; the PM checks them at the sub-merge gate
 and does not waive them there.
 
-**Before launching, make the worktree usable.** Create it under `.claude/worktrees/`
-(inside the checkout, gitignored, and inside the project root so the sandbox permits
-writes), then copy the project's `.worktreeinclude` matches into it — a worktree is a
-fresh checkout of *tracked* files, so `.env` and local secrets are otherwise missing and
-env-dependent suites fail as `blocked`. And remember the worker **cannot answer a
-permission prompt**: every command it needs must already be in the committed
-`.claude/settings.json` allow-list.
+**Do not create the worktree.** `isolation: "worktree"` makes the harness create it under
+`.claude/worktrees/`, pin the worker to it, copy the project's `.worktreeinclude` matches
+in, and return its path and branch in the worker's result. The PM's job is to keep
+`.worktreeinclude` accurate — a worktree is a fresh checkout of *tracked* files, so
+`.env` and local secrets are otherwise missing and env-dependent suites fail as
+`blocked`. And remember the worker **cannot answer a permission prompt**: every command
+it needs must already be in the committed `.claude/settings.json` allow-list.
 
 ## Return contract
 

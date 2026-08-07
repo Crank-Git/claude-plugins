@@ -27,10 +27,13 @@ git fetch <remote>
 git push <remote> <remote>/<dev>:refs/heads/epic/<n>-<slug>
 ```
 
-Member branches fork the integration branch (workers do this in their worktrees):
+Member branches fork the integration branch. The worker is already inside a worktree the
+harness made for it, so it switches that worktree onto its branch rather than adding one
+(the harness branches from the default branch, not from the member's base):
 
 ```bash
-git worktree add .claude/worktrees/issue-<m> -b issue/<m>-<slug> <remote>/epic/<n>-<slug>
+git fetch <remote>
+git checkout -B issue/<m>-<slug> <remote>/epic/<n>-<slug>
 ```
 
 Sequenced members (dependency chains) launch only after their predecessor sub-merges,
