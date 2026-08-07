@@ -14,6 +14,7 @@ Restart the session after you install a plugin, so its skills and agents load.
 | Plugin | What it does |
 |---|---|
 | [**issue-flow**](issue-flow/) | Drives an autonomous development loop from GitHub Issues. It plans a spec, decomposes it into epics and sub-issues, and builds each one with a background worker agent on a batched integration branch. CI runs once per batch. A browser check verifies the deployment, and a user-viewpoint review files what it finds. |
+| [**statusline-spark**](statusline-spark/) | Status line renderers that add history. The main line wraps `claude-powerline` and appends a context-window sparkline, whose sawtooth marks every auto-compact, and a cost burn-rate sparkline. The subagent panel gets a custom row: model, effort, context bar, token-rate sparkline, and elapsed time. |
 
 ## Develop a plugin in this repository
 
