@@ -1,0 +1,21 @@
+{
+  "name": "statusline-spark",
+  "version": "0.1.0",
+  "description": "Status line renderers for Claude Code: a claude-powerline wrapper that adds context-window and cost-burn sparklines from per-session history, plus a custom subagent panel row showing model, effort, context bar, token rate and elapsed time. Install and uninstall are slash commands.",
+  "keywords": [
+    "statusline",
+    "powerline",
+    "sparkline",
+    "subagent",
+    "context-window",
+    "cost",
+    "observability"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/Sniper7Kills-LLC/claude-plugins/tree/main/statusline-spark",
+  "repository": "https://github.com/Sniper7Kills-LLC/claude-plugins",
+  "author": {
+    "name": "sniper7kills",
+    "email": "sniper7kills@gmail.com"
+  }
+}

@@ -24,6 +24,24 @@
         "name": "sniper7kills",
         "email": "sniper7kills@gmail.com"
       }
+    },
+    {
+      "name": "statusline-spark",
+      "source": "./statusline-spark",
+      "version": "0.1.0",
+      "category": "productivity",
+      "description": "Status line renderers with history: a claude-powerline wrapper that adds context-window and cost-burn sparklines, plus a custom subagent panel row showing model, effort, context bar, token rate and elapsed time.",
+      "keywords": [
+        "statusline",
+        "powerline",
+        "sparkline",
+        "subagent",
+        "observability"
+      ],
+      "author": {
+        "name": "sniper7kills",
+        "email": "sniper7kills@gmail.com"
+      }
     }
   ]
 }

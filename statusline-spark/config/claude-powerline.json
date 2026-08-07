@@ -1,0 +1,58 @@
+{
+  "theme": "dark",
+  "display": {
+    "style": "minimal",
+    "charset": "unicode",
+    "padding": 1,
+    "autoWrap": true,
+    "lines": [
+      {
+        "segments": {
+          "directory": { "enabled": true, "style": "fish" },
+          "git": {
+            "enabled": true,
+            "showWorkingTree": true,
+            "showAheadBehind": true,
+            "showOperation": true,
+            "showStashCount": true,
+            "showWorktree": true
+          },
+          "model": { "enabled": true },
+          "thinking": { "enabled": true, "showEnabled": true, "showEffort": true },
+          "version": { "enabled": true }
+        }
+      },
+      {
+        "segments": {
+          "context": {
+            "enabled": true,
+            "displayStyle": "blocks",
+            "percentageMode": "used",
+            "autocompactBuffer": 33000
+          },
+          "session": { "enabled": true, "type": "both", "showUnits": false, "costSource": "official" },
+          "metrics": {
+            "enabled": true,
+            "showResponseTime": false,
+            "showLastResponseTime": true,
+            "showDuration": true,
+            "showMessageCount": true,
+            "showLinesAdded": true,
+            "showLinesRemoved": true
+          },
+          "cacheTimer": { "enabled": true, "displayMode": "remaining" }
+        }
+      },
+      {
+        "segments": {
+          "block": { "enabled": true, "displayStyle": "blocks" },
+          "weekly": { "enabled": true, "displayStyle": "blocks" },
+          "today": { "enabled": true, "type": "both", "showUnits": false }
+        }
+      }
+    ]
+  },
+  "budget": {
+    "today": { "amount": 0, "showPercentage": false }
+  }
+}
