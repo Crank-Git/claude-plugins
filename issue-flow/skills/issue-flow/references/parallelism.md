@@ -49,14 +49,21 @@ simultaneously, **each in its own worktree**. Members of a dependency chain are 
 exception to "launch whenever a slot frees": they run **sequentially** within their
 batch — each launches after its predecessor sub-merges into the integration branch.
 
-Setup per issue (base = the batch's integration branch; `<remote>/<dev>` only for
-standalone/hotfix work — see [batching.md](batching.md)):
+Setup per issue: the PM creates no worktree. It launches the worker with
+`isolation: "worktree"` and the harness makes one under `.claude/worktrees/`, pinned to
+that worker alone (see [worktrees.md](worktrees.md)). The worker then points its worktree
+at its base (the batch's integration branch; `<remote>/<dev>` only for standalone/hotfix
+work — see [batching.md](batching.md)):
 
 ```bash
-# from the main checkout
+# inside the worker's own worktree
 git fetch <remote>
-git worktree add .claude/worktrees/issue-<number> -b issue/<number>-<slug> <remote>/epic/<n>-<slug>
+git checkout -B issue/<number>-<slug> <remote>/epic/<n>-<slug>
 ```
+
+On a re-spawn for rework the base is the issue's **own published branch** instead
+(`<remote>/issue/<number>-<slug>`) — the worker checks for it before falling back, so a
+second attempt cannot reset away the first attempt's commits.
 
 - `<remote>` is detected in preflight (`git remote` — usually `origin` but never
   hardcode it).
@@ -64,10 +71,16 @@ git worktree add .claude/worktrees/issue-<number> -b issue/<number>-<slug> <remo
 - The main thread owns the loop and the gates; it may launch a background implement
   Workflow per issue and react to each `<task-notification>` as issues complete.
 
-Cleanup on merge (or abandonment):
+Cleanup on merge (or abandonment) — the harness auto-removes an isolated worktree only if
+it is *unchanged*, and a worker's is never unchanged, so the PM removes it. Use the path
+from the worker's completion notification (`worktreePath`) or its verdict, and sweep for
+leftovers from earlier sessions:
 
 ```bash
-git worktree remove .claude/worktrees/issue-<number> --force   # after the branch is merged/deleted
+git worktree remove --force <path from the completion notification>  # after the branch is merged/deleted
+git branch -D worktree-agent-<id>                                   # the harness branch the removal leaves
+git worktree list --porcelain                                       # leftovers on issue/* branches
+git worktree remove -f -f <leftover>                                # -f -f: a killed session leaves the lock
 git worktree prune
 ```
 
