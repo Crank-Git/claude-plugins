@@ -103,6 +103,11 @@ dev ◄────────────────────────�
    token-heavy read (diffs, CI logs, deploy logs, file maps) is delegated to a subagent
    that returns a short summary. This — not any counter — sets how many issues a session
    can clear. See [references/parallelism.md](references/parallelism.md).
+   **Batch your tool calls.** Every request re-reads your whole context, and yours is the
+   largest in the run, so a wasted round trip costs more here than anywhere else. Issue
+   independent calls together in one message (all of a triage pass's `forge.issue.view`s
+   at once); chain ordered shell commands with `&&` in a single `Bash` call. Never spend a
+   turn on `cd`, `pwd`, or `ls` alone.
 6. **Every state change leaves a tracker trace** (label + comment). Someone reading only
    the tracker can reconstruct what happened — and so can Phase 0 recovery.
 
@@ -286,11 +291,15 @@ Event-driven, never blocking. **Sweep, then triage, always first and always recu
 on every skill load — after Phase 0 preflight, before scheduling anything — read what
 changed on the tracker (Stage A0) and then triage it (Stage A). Then form/refill batches
 in Stage B up to `concurrency` workers and stay responsive; each worker/watcher
-completion drives Stage C/D, which frees a slot. **Re-run A0 + A whenever the backlog
-changes** — every time a worker completes, and every time new issues or comments appear
-(epic sub-issues you generated, hotfix issues from a failed deploy, or anything filed by
-a human or a worker while you were busy) — before you pick the next work in Stage B.
-Between events, idle but available.
+completion drives Stage C/D, which frees a slot. **Re-run the full A0 + A sweep at three
+points only:** on skill load, before a merge gate, and when the ready pool empties. A
+routine worker completion does **not** earn a full sweep — full triage is a list plus a
+read of every untriaged item at PM context size, and paying that on every completion is
+one of the largest avoidable costs in the loop. On a routine completion do a **targeted
+single-issue read** of just the issue that finished. New issues or comments you learn
+about out of band (epic sub-issues you generated, hotfix issues from a failed deploy,
+anything filed by a human or a worker while you were busy) are picked up by the next
+scheduled sweep. Between events, idle but available.
 
 ## Stage A0 — Sweep comments and external changes (before every triage)
 
@@ -325,9 +334,16 @@ read what they did since `LAST_SWEEP`. Full playbook —
 
 ## Stage A — Triage the backlog (after every sweep)
 
-Run this immediately after the Stage A0 sweep — on load, at the top of every loop
-iteration, and on every worker/watcher completion. It is cheap (a list + label/comment
-pass) and it keeps the queue correct as the tracker churns.
+Run **full** triage immediately after the Stage A0 sweep on load, before any merge gate,
+and whenever the ready pool is empty or nearly so. Do **not** re-run it on every worker
+completion. A full pass is a `forge.issue.list` plus a read of every untriaged item, and
+at PM context size that is one of the most expensive things in the loop — not a free
+refresh.
+
+On a routine worker completion, do the **targeted** version instead: read that one issue's
+state, apply its label, and schedule the next issue already in the ready pool. The tracker
+is the source of truth and it is not going anywhere; re-deriving the whole queue after
+every single verdict buys nothing and costs a full-context pass each time.
 
 1. `forge.issue.list` and triage:
    - **Skip** `status:blocked` / `status:needs-feedback` (but re-check, step 4) and `flow:status`.
@@ -385,6 +401,7 @@ Triggered by a worker's completion notification. Act on its `outcome`:
 
 - **`needs-feedback`** → label `status:needs-feedback`, post the worker's `question` as an issue comment, park per the feedback policy. Free the slot → Stage A/B.
 - **`blocked`** → label `status:blocked`, comment naming the `blocker`. Free the slot.
+- **`checkpoint`** → the worker hit its turn budget with work pushed and nothing wrong. **Re-spawn a fresh worker** (do *not* `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and the verdict's `remaining` text appended to the plan. **Do not touch the status label** — leave it exactly as the checkpointed worker left it: `status:in-review` if it had already opened the PR (runbook step 2), `status:in-progress` if it checkpointed during implementation before that. Either is correct, the replacement adopts whatever PR exists rather than re-opening one, and flipping the label buys nothing but thrash. **Post one terse comment** — `checkpoint <k>: <one-line remaining>, replacement spawned` — which is what invariant 6 requires of any state change, what the chain cap below counts, and what Phase 0 reconstructs an interrupted run from. No gate, no digest line, and **do not free the slot** — the issue is still in flight and its replacement occupies the same one. This is routine flow control, not an exception — a long issue is *expected* to take two or three workers. **Remove the checkpointed worker's worktree** (`git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>`, as in step 5 below) — the replacement gets a fresh one from the harness and re-checks-out the published branch, so keeping the old tree only leaks it. The commits are safe on the remote; that is what makes the handoff free. **Cap the chain: after 3 consecutive checkpoints on one issue**, stop re-spawning — a worker that checkpoints without visible progress recycles forever and pays a fresh context ramp each time. Label `status:needs-feedback` (or `status:blocked` if the last `remaining` names a hard blocker), comment with the chain of `remaining` notes, free the slot, and park it per the feedback policy. Count the chain from those checkpoint comments, and reset it whenever a checkpoint's PR shows new commits.
 - **`ready-to-merge`** → sub-merge below (never on the worker's word alone):
   1. Verify: all PR threads resolved, PR targets the **integration branch**, worker reported the **local checks green** (`localChecks` in its verdict), and the session's `practices` were met (tests-first evidence, E2E where required, coverage threshold, commit style, docs — see [session-config.md](references/session-config.md)). A practice missed without a stated reason goes back to the worker; it is not waived at the gate. No provider CI to wait for.
   1b. **Acceptance criteria gate.** The worker returns `criteria: [{text, met, evidence}]` — one entry per acceptance criterion in the issue body. Check the list is **complete** (every criterion in the issue appears) and that each `met: true` carries real evidence (a test name, a command output, a file:line). Any criterion `met: false`, missing, or evidenced only by "implemented" goes **back to the worker** with the specific criterion quoted; a criterion the worker argues is wrong or unbuildable is a product question → `status:needs-feedback`, not a waiver. Acceptance criteria are the definition of done that `spec-to-issues` wrote down — this is where they are enforced, not months later in `project-review`.
@@ -393,7 +410,7 @@ Triggered by a worker's completion notification. Act on its `outcome`:
   4. Sweep for new comments on the PR (Stage A0) — a "hold this" posted a minute ago outranks your gate — then merge the sub-PR: `forge.pr.ready` then `forge.pr.merge.squash` (on Gitea, follow with `forge.branch.delete` — `tea pr merge` does not remove the branch) (head commit already carries `[skip ci]`, so readying/merging stays CI-free).
   5. Label the member `status:batched`, tick its checkbox on the epic/batch tracking issue (edit only your own marker block — see [collaboration.md](references/collaboration.md)), then remove the worktree from the worker's completion notification (`worktreePath`, or the `worktree` field of its verdict): `git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>` (a worker's tree always holds commits, so the harness never auto-removes it, and removing the tree leaves its harness branch behind). Launch any member that was sequenced behind it. Free the slot → Stage A/B.
 
-  **Anything that goes back to the worker** (an unevidenced criterion, a missed practice, a review comment, a mechanical conflict) goes back by **`SendMessage` to `worker-<issue>`** — it still holds its worktree and its branch, so nothing is re-pointed. Re-spawn only if it is no longer addressable, and then pass `base: <remote>/issue/<n>-<slug>`, never the integration branch: a fresh worker starts on the default branch, and pointing its branch at the integration branch would drop the PR's commits. Keep the worktree until the issue is `status:batched` or terminally parked. See [references/issue-worker.md](references/issue-worker.md).
+  **Anything that goes back to the worker** (an unevidenced criterion, a missed practice, a review comment, a mechanical conflict) goes back by **`SendMessage` to `worker-<issue>`** — it still holds its worktree and its branch, so nothing is re-pointed. Re-spawn only if it is no longer addressable, and then pass `base: <remote>/issue/<n>-<slug>`, never the integration branch: a fresh worker starts on the default branch, and pointing its branch at the integration branch would drop the PR's commits. Keep the worktree until the issue is `status:batched` or terminally parked — **except on `checkpoint`**, which reaps the worktree immediately (the status label is left untouched and the replacement worker gets a fresh tree from the harness; see Stage C1). See [references/issue-worker.md](references/issue-worker.md).
 
 ### C2 — Batch gate (when a batch completes)
 
@@ -477,7 +494,9 @@ merely succeeds.
 
 ## Stage E — Loop, report, stop
 
-Each handled verdict frees a slot → return to Stage A/B and refill. **Drop finished
+Each handled verdict frees a slot → return to Stage A/B and refill — **except
+`checkpoint`, which does not free a slot**: the issue is still in flight and its
+replacement worker occupies the same one. **Drop finished
 issues and batches from working memory** (fully recorded on the tracker); keep only the running
 session summary so context stays flat as the count grows. If context is compacted
 mid-loop, re-run Phase 0 recovery and continue.

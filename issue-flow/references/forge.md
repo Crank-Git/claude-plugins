@@ -138,6 +138,19 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 | `forge.pr.merge.commit` | `gh pr merge <pr> --merge --delete-branch` | `tea pr merge <pr> --style merge`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "merge", delete_branch: true)` |
 | `forge.branch.delete` | folded into `--delete-branch` | `tea pr clean <pr>`, or `git push <remote> --delete <branch>` | `delete_branch` |
 
+**`forge.pr.view` by *branch* is GitHub-only.** `gh pr view <branch>` resolves a branch
+name as readily as a number; no `tea` command and no Gitea endpoint does. A replacement
+worker adopting an already-open PR (the routine path after a `checkpoint`) therefore lists
+and filters on the head ref:
+
+```bash
+tea api "/repos/{owner}/{repo}/pulls?state=open" \
+  | jq -r '.[] | select(.head.ref == "issue/<n>-<slug>") | .number'
+```
+
+Empty output means no PR is open for that branch — open one. More than one line is a bug
+worth stopping on, not a pick-the-first situation.
+
 **Draft pull requests on Gitea are a title prefix.** `tea pr create --draft` prepends
 `WIP: `, and Gitea treats a WIP-prefixed pull request as a draft. `tea pr edit --draft`
 adds the prefix idempotently and `--ready` strips a leading `WIP: ` or `[WIP]`. The
@@ -160,13 +173,115 @@ it before the batch lands. The worker enforces this rule for both forges.
 | `forge.run.list` | `gh run list --branch <b> --json databaseId,status,conclusion` | `tea actions runs list --branch <b> --output json` | `actions_run_read(method: "list_runs")` |
 | `forge.run.view` | `gh run view <id>` | `tea actions runs view <id>` | `actions_run_read(method: "get_run")` |
 | `forge.run.log` | `gh run view <id> --log-failed` | `tea actions runs logs <id>` | `actions_run_read(method: "get_job_log_preview", max_bytes, tail_lines)` — **preferred** |
-| `forge.pr.checks` | `gh pr checks <pr> --watch` | poll `forge.run.list` with `--branch <b>` set to the head branch | `actions_run_read(method: "list_runs")` |
+| `forge.pr.checks` | `gh pr checks <pr> --watch` | the commit-anchored shell loop below | `actions_run_read(method: "list_runs")` |
 
-**`tea actions runs list` filters by branch.** `--branch <b>` narrows the list to one
-branch, and `--status`, `--event`, `--actor`, `--since` and `--until` narrow it further.
+**The `tea actions …` rows need Gitea ≥ 1.26.0.** `tea` refuses the whole `actions`
+family against an older server (`gitea server at <host> is older than 1.26.0`). The
+underlying REST endpoints exist well before that, so on a 1.25.x server — including the
+1.25.3 this file is verified against — reach them with
+`tea api "/repos/{owner}/{repo}/actions/…"`, or use the Gitea MCP column.
 
-**Gitea has no `--watch`.** Poll `forge.run.list` on an interval instead of blocking, and
-keep the polling in a subagent so the log volume never reaches the PM.
+**`forge.pr.checks` is one blocking call, never a turn per status check.** Every agent
+turn re-reads the agent's whole context, so a 30-minute watch at one turn per check costs
+60 full-context round trips instead of one. Resolve it through the abstraction like any
+other operation — never hardcode `gh`. On GitHub it is already blocking and takes the PR
+number the worker already has; on Gitea it resolves to the loop below. Keep either in a
+subagent so log volume never reaches the PM.
+
+**Do not build the Gitea watch on `tea actions runs list`.** Two measured reasons:
+
+- **It is not the API object.** `tea` renders that command as a flattened *table*, so the
+  JSON rows carry only `id`, `status`, `workflow`, `branch`, `event`, `started`,
+  `duration` — every value a string, with **no `conclusion` and no `head_sha`**. Pass/fail
+  is therefore absent: `status` only ever holds `queued`, `waiting`, `in_progress` or
+  `completed`, while the `success`/`failure`/`cancelled`/`skipped` word lives in
+  `conclusion`. And `.[0]` is not the newest run — rows sort descending by `id` compared
+  *as a string*, so with runs 9 and 10 present, `.[0]` is run **9**. A loop keyed on
+  `.[0]` reads a stale run; if that stale run is green it reports success for a commit
+  that was never tested, which is the worst failure a merge gate can be fed.
+- **It does not exist before Gitea 1.26.0** (see the version note above). Every call
+  fails outright, so a loop built on it degrades to a silent timeout rather than an error.
+
+Use **`tea api`** instead. It is an authenticated passthrough to the REST API, it is not
+version-gated, it returns the real object (`status`, `conclusion`, `head_sha`), and it
+substitutes `{owner}`/`{repo}` from the current checkout — which the worker always has.
+The Actions endpoint filters by `head_sha` **server-side**, so anchor the watch to the
+commit you just pushed rather than to "the latest run on the branch":
+
+```bash
+# ONE tool call. Blocks until CI for THIS commit is terminal.
+SHA=$(git rev-parse HEAD)
+none=0
+for _ in $(seq 1 60); do
+  v=$(tea api "/repos/{owner}/{repo}/actions/runs?head_sha=$SHA" \
+      | jq -r '(.workflow_runs // .runs // []) as $r
+               | if   ($r|length) == 0                  then "pending:none"
+                 elif any($r[]; .status != "completed") then "pending:running"
+                 elif all($r[]; .conclusion == "success" or .conclusion == "skipped")
+                                                        then "success"
+                 else "failure" end')
+  case "$v" in
+    pending:none)                       # no run for this commit yet
+      none=$((none+1))
+      [ "$none" -ge 6 ] && { echo "no-run-registered"; exit 0; }   # [skip ci] — NOT success
+      sleep 10 ;;
+    pending:running) sleep 30 ;;
+    ""|null) echo "watch-error"; exit 1 ;;   # request or jq failed — never a pass
+    *) echo "$v"; exit 0 ;;
+  esac
+done
+echo "timed-out"
+```
+
+Four properties worth keeping if you rewrite it:
+
+- **The `head_sha` anchor** — a stale run can never be mistaken for yours.
+- **`no-run-registered` distinct from `success`** — a `[skip ci]` commit was not tested.
+- **The aggregate across *all* workflows for the commit** — one green workflow does not
+  excuse a red sibling.
+- **Success is proven, not assumed.** Listing the failing conclusions instead (`failure`,
+  `cancelled`, …) is a blacklist: `timed_out`, `startup_failure`, `action_required` and a
+  `null` conclusion all fall through to a pass and go straight into a merge gate. Only
+  `success` and `skipped` count as green — a workflow skipped by its own `if:` condition
+  is a pass, unlike the whole-commit `no-run-registered` beside it.
+
+**The response is `{"total_count": n, "workflow_runs": [...]}`** — measured against 1.25.3,
+which is also what GitHub returns for the same endpoint. The `// .runs` fallback is there
+only so a differently-shaped server does not silently produce an empty `$r`, which would
+report `no-run-registered` on every commit forever.
+
+**An empty request must not read as green.** The request's stderr is *not* suppressed: a
+failed `tea api` call leaves `v` empty, and without the `""|null` arm the empty string
+falls to `*)`, which ends the watch with exit 0 and a blank verdict. That is not
+hypothetical — it is exactly what the login mismatch documented below produces. Measured
+on a checkout whose remote carried an embedded token:
+
+```
+NOTE: no login matched this repository, falling back to login 'x' in non-interactive mode.
+Error: request failed: Get "http://<other-host>/api/v1/repos///actions/runs?head_sha=…"
+```
+
+`/repos///` — `{owner}` and `{repo}` both empty, against the wrong server. With the arm in
+place that is `watch-error` and exit 1; without it, a blank pass.
+
+**The `pending:none` window is 60 seconds (6 × 10s) and fails toward "not tested".** A
+self-hosted runner slow to register the run reports `no-run-registered` for a commit that
+does get tested; the PM treats that as a gate to resolve, not a pass, so the cost is a
+stall rather than an untested merge. Raise the count if a runner routinely takes longer to
+pick up work — never lower it. A workflow file Gitea cannot parse registers **no run at
+all** rather than a failed one, so a commit whose only workflow is malformed also lands
+here — another reason this outcome must never be read as green.
+
+**`tea api` matches the login by git remote URL.** A remote with credentials embedded
+(`https://<token>@host/...`) matches nothing, and `tea` then silently falls back to some
+other configured login and resolves `{owner}`/`{repo}` to empty. Keep the remote clean and
+authenticate with a credential helper.
+
+The same rule holds on GitHub: `gh pr checks <pr> --watch` already blocks in one call.
+Never wrap `forge.pr.checks` or `forge.run.list` in an agent-driven retry loop on either
+forge. **`gh pr checks` exits non-zero when checks fail (and `8` when they are still
+pending).** That surfaces as a failed `Bash` call — treat the non-zero exit as the
+result, not as a tool error to retry.
 
 **`[skip ci]` is native on both.** Gitea Actions honors `[skip ci]`, `[ci skip]`,
 `[no ci]`, `[skip actions]` and `[actions skip]` in the head commit message from 1.20
