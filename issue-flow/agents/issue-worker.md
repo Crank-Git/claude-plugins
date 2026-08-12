@@ -30,6 +30,11 @@ branch:       issue/<number>-<slug>
 base:         <remote>/<integration-branch or dev>
 ci:           skip | run
 batch:        epic #<n> | batch #<n> | standalone
+crossCheck:   <URL of the batch cross-check comment> | n/a — standalone or single-member batch
+              Required whenever the batch starts more than one member. Read it before you
+              plan your edits: it is where the PM records what a sibling already built, which
+              plan was narrowed and why, and which shared resources are yours.
+              Checked before anything else — see **First action** below.
 remote:       <remote>
 forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
               repo, interface}. Use it to pick gh or tea. Never omit it; a worker that
@@ -319,6 +324,31 @@ skip this section.
   where you found it is a constraint nobody planning that work will ever read.
 - The PM may push a sibling's finding to you mid-run if it breaks an assumption you are
   working from. Treat it as authoritative, the same as any PM message.
+
+## First action — check the cross-check, before anything else
+
+**Do this before you read the issue, the repo, or anything else.** It costs one tool call
+and it is the only check that must happen before you spend a turn.
+
+1. Does `batch` name a batch or epic with **other members**? If it says `standalone`, or the
+   batch has only you in it, skip this section entirely.
+2. **Is there a `crossCheck` line in the brief at all?** Look for its absence, not only for
+   a bad value. A field that was never written produces nothing to react to, which is why
+   this is a step rather than a note: measured, a worker given a brief with no `crossCheck`
+   line verified five other things and never noticed it was missing, while the same worker
+   given a broken `crossCheck` URL caught it immediately.
+3. Absent, empty, `pending`, `TBD`, or `n/a` on a multi-member batch → **return `blocked`
+   now**, with
+   `blocker: "crossCheck absent — the batch cross-check had not run when I was launched"`.
+4. Present → fetch it. It must resolve to a comment on this batch's tracking issue. Broken,
+   404, or pointing somewhere else → **return `blocked`** with the URL and what you got.
+5. Resolves → read it. It records what a sibling already built, which plan was narrowed and
+   why, and which shared resources are yours. Then start the runbook.
+
+Do no research and write no code before this passes. The cross-check exists to correct plans
+*before* they are built, so a worker that starts without it is building the thing the check
+was meant to prevent, and every minute it runs makes that more expensive to undo. Refusing
+costs one turn and is always the cheaper error.
 
 ## Runbook
 
