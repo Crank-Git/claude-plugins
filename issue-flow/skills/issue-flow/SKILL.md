@@ -322,6 +322,17 @@ read what they did since `LAST_SWEEP`. Full playbook —
    integration branch → fetch and treat it as base; never force-push or revert their
    commits. Your PR merged/closed by someone else → accept it and move on. Labels changed
    by a human → theirs win.
+3b. **Repair split status.** Any issue carrying **more than one** `status:` label is in an
+   impossible state and every status query it answers is wrong from here on. Find them in the
+   same pass — the issue list you already fetched carries labels, so this costs no extra call
+   — and repair each to the **furthest-along** label alone
+   (`ready < in-progress < in-review < batched < deploying`; `blocked`, `needs-feedback` and
+   `awaiting-review` win over all of them, since they are parks and the park is the live
+   state). Then carry on; do not investigate, do not comment. This is a **repair, not a
+   diagnosis** — it exists because the C1 gate has been measured leaving `in-review` behind
+   when it adds `batched`, across three separate runs, while reporting in its own comment that
+   the issue is `status:batched`. A gate that believes it did the swap cannot catch itself, so
+   the sweep catches it instead.
 4. **Respect other operators.** Never take an issue assigned to another login, never edit
    another operator's `flow:status` issue, never open a competing integration branch for
    an epic someone else is running.
@@ -464,13 +475,20 @@ Triggered by a worker's completion notification. Act on its `outcome`:
   2. **Conflict vs the integration branch** (a sibling just sub-merged): mechanical → resolve directly or via a short-lived worker; **semantic** (two intents on the same logic) → `status:needs-feedback` on both issues, park, do not guess.
   3. **Authority gate.** If `prAuthority` is `review-all` or `propose-only`, do **not** merge: ready the PR, request review, label the issue `status:awaiting-review`, notify once, and go schedule other work. Merge only after a human approving review lands (a reaction or a vague "looks good" is not one). Under `autonomous`/`batch-review`, sub-merges are yours.
   4. Sweep for new comments on the PR (Stage A0) — a "hold this" posted a minute ago outranks your gate — then merge the sub-PR: `forge.pr.ready` then `forge.pr.merge.squash` (on Gitea, follow with `forge.branch.delete` — `tea pr merge` does not remove the branch) (head commit already carries `[skip ci]`, so readying/merging stays CI-free).
-  5. **`forge.issue.status.set <member> status:batched`**, removing `status:in-review` in the
-     same call — see [forge.md](../../references/forge.md). A status change is a swap, never a
-     bare `label.add`: an issue carries **at most one** `status:` label
-     ([labels.md](references/labels.md)), and adding without removing leaves it in two states
-     at once, which poisons every later query that selects by status. This has been measured
-     failing on every member of two separate batches, so do not treat it as pedantry — check
-     the member carries exactly one `status:` label before you move on. Then tick its checkbox
+  5. **One call, nothing else in this step:**
+     `forge.issue.status.set <member> status:batched` (removes `status:in-review`, adds
+     `status:batched` — see [forge.md](../../references/forge.md)). Do this **before** the
+     bookkeeping in step 6, not folded into it.
+
+     This step is deliberately alone because folding it in is measured to fail. Across three
+     live runs, **every** `→ status:batched` transition added without removing, while the
+     `ready → in-progress` and `in-progress → in-review` swaps on the very same issues were
+     correct every time. The difference is not the vocabulary — it is that those two are
+     standalone instructions and this one used to be a clause inside a step that also merges,
+     ticks, reaps a worktree and launches a successor. An issue carries **at most one**
+     `status:` label ([labels.md](references/labels.md)); two at once poisons every later
+     query that selects by status, and Stage A triage reads exactly those queries.
+  6. **Then the bookkeeping.** Tick its checkbox
      on the epic/batch tracking issue (edit only your own marker block — see [collaboration.md](references/collaboration.md)), then remove the worktree from the worker's completion notification (`worktreePath`, or the `worktree` field of its verdict): `git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>` (a worker's tree always holds commits, so the harness never auto-removes it, and removing the tree leaves its harness branch behind). Launch any member that was sequenced behind it. Free the slot → Stage A/B.
 
   **Anything that goes back to the worker** (an unevidenced criterion, a missed practice, a review comment, a mechanical conflict) goes back by **`SendMessage` to `worker-<issue>`** — it still holds its worktree and its branch, so nothing is re-pointed. Re-spawn only if it is no longer addressable, and then pass `base: <remote>/issue/<n>-<slug>`, never the integration branch: a fresh worker starts on the default branch, and pointing its branch at the integration branch would drop the PR's commits. Keep the worktree until the issue is `status:batched` or terminally parked — **except on `checkpoint`**, which reaps the worktree immediately (the status label is left untouched and the replacement worker gets a fresh tree from the harness; see Stage C1). See [references/issue-worker.md](references/issue-worker.md).
