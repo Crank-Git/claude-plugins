@@ -34,6 +34,15 @@ crossCheck:   <URL of the batch cross-check comment> | n/a — standalone or sin
               Required whenever the batch starts more than one member. Read it before you
               plan your edits: it is where the PM records what a sibling already built, which
               plan was narrowed and why, and which shared resources are yours.
+              **Validate it as your first action, and refuse the job if it does not hold up.**
+              If `batch` names a batch with other members and this field is absent, empty,
+              "pending", "n/a", or a URL that does not resolve to a comment on the tracking
+              issue, return `blocked` immediately with
+              `blocker: "crossCheck missing — the batch cross-check had not run when I was
+              launched"`. Do no research, write no code. The check exists to correct plans
+              *before* they are built; a worker that starts without it is building the thing
+              the check was meant to prevent, and every minute it runs makes that more
+              expensive to undo. Refusing costs one turn and is always the cheaper error.
 remote:       <remote>
 forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
               repo, interface}. Use it to pick gh or tea. Never omit it; a worker that

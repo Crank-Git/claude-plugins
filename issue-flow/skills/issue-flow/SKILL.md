@@ -456,8 +456,10 @@ every single verdict buys nothing and costs a full-context pass each time.
 
 5. **Hand off to a worker.** For a batch starting more than one member, the brief's
    **`crossCheck` field is the URL of step 4's comment**, and it is required — you cannot fill
-   it in before the comment exists, which is the point. Do not launch with it blank, and do not
-   write "pending": the ordering mistake it prevents is the one that cannot be repaired
+   it in before the comment exists, which is the point. **The worker validates it and returns
+   `blocked` without doing any work if it is missing, empty, "pending" or unresolvable**, so a
+   launch that jumps the check now fails loudly and cheaply instead of quietly building against
+   an unchecked plan. Do not launch with it blank, and do not write "pending": the ordering mistake it prevents is the one that cannot be repaired
    afterwards, because by the time the check reports, the plans it would have corrected are
    already being built. Measured failing in a live run even with an explicit
    "check the comment exists first" instruction here, which is why it is now a field rather
