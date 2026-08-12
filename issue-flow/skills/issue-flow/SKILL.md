@@ -235,7 +235,7 @@ dev ◄────────────────────────�
    tables, the authority matrix and how practices are enforced:
    [references/session-config.md](references/session-config.md).
    **Worker worktrees are created by the harness, not by you.** Launch every worker with
-   `isolation: "worktree"` (Stage B step 4) and the harness makes its worktree under
+   `isolation: "worktree"` (Stage B step 5) and the harness makes its worktree under
    `.claude/worktrees/agent-<id>`, pinned to that worker alone. **You learn the path from
    the worker's completion notification** — it carries a `<worktree>` block with
    `worktreePath` and `worktreeBranch` (measured on 2.1.224). The worker also reports its
@@ -391,7 +391,34 @@ every single verdict buys nothing and costs a full-context pass each time.
    - Comment a short plan on the issue (approach, files, out-of-scope).
    - **Claim with compare-and-set:** immediately before swapping labels, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else remove `status:ready`, add `status:in-progress`, `forge.issue.assign` (assignee = lock; on Gitea resolve your login with `forge.user.login` first — `tea` has no `@me`).
    - If planning surfaces a user-only decision, don't guess: comment the question, label `status:needs-feedback`, drop the claim, pick different work.
-4. **Hand off to a worker.** Launch with `Agent`, `agentType: "issue-flow:issue-worker"`, `run_in_background: true`, **`isolation: "worktree"`**, `name: "worker-<issue>"` (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it; the name keeps it addressable by `SendMessage` for rework), passing only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md). Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
+4. **Cross-check the batch's plans before you launch them.** Run this once per batch, after
+   step 3 has commented a plan for every member you are about to start, and only when **≥2
+   members launch together** (skip for singletons and standalone work). Spawn **one**
+   read-only agent (Haiku is enough; Sonnet if the plans are dense) and give it just the
+   plan comments — not the code, not the diffs. Ask it for exactly this: which plans claim
+   the **same file, function, interface, migration, config key or route**, and where one
+   plan **assumes** a shape another plan is changing. It reports pairs with evidence and
+   proposes an owner; it decides nothing.
+
+   Then act on each pair, on the main thread:
+   - **Same file, disjoint intent** → leave it. Worktrees isolate the edits and the PM
+     resolves the conflict once at sub-merge; this is the design, not a problem.
+   - **One plan changes what another consumes** → sequence them in this batch (the
+     consumer forks the updated integration branch after the producer sub-merges), or
+     narrow the consumer's plan to the current shape and file the follow-up.
+   - **Both plans intend to own the same new thing** (two versions of one helper, two
+     migrations for one table) → fix it now: pick the owner, edit the other plan's comment,
+     say so on both issues.
+   - **Genuine product disagreement about the same logic** → `status:needs-feedback` on
+     both, per the feedback policy. Do not launch either.
+
+   Why it earns its cost: the same collision found here costs one plan edit; found at C1 it
+   costs two built branches and a semantic conflict. One small agent per batch, reading a
+   few short comments, is the cheapest gate in the loop. Record anything the workers should
+   know as a `finding:` on the tracking issue (see
+   [references/batching.md](references/batching.md)) rather than only in your own context.
+
+5. **Hand off to a worker.** Launch with `Agent`, `agentType: "issue-flow:issue-worker"`, `run_in_background: true`, **`isolation: "worktree"`**, `name: "worker-<issue>"` (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it; the name keeps it addressable by `SendMessage` for rework), passing only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md). Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
 ## Stage C — Integrate (two gates)
 
