@@ -93,9 +93,23 @@ first research action, before it plans its edits, and again on a rework or repla
 spawn — a checkpoint replacement inherits none of the original's context, so the log is
 how the batch's knowledge outlives it.
 
-**The PM relays the urgent ones.** A finding that merely informs can wait to be read. A
-finding that **invalidates an assumption a live sibling is working from** is pushed now,
-by `SendMessage` to that `worker-<n>`, with the finding quoted and what to do about it —
+**The PM relays the urgent ones.** A worker reads the log when it starts, so the log only
+ever reaches workers that start *after* a finding lands. For anyone already running, the
+push is the only channel — and the PM decides, at the moment a `finding:` appears, whether
+a live sibling needs it now.
+
+Push it if either is true:
+
+- It **invalidates an assumption a live sibling is working from** — a correctness problem.
+- It **would save a live sibling from rediscovering it** — a cost problem. Setup
+  prerequisites, environment traps, a tool invocation that has to be shaped a particular
+  way. These are the cheapest wins and the easiest to miss, because nothing is *wrong*
+  until the sibling wastes the same hour. Measured in a live run (Deepfield-TI epic #21):
+  one worker logged that a fresh worktree has no `node_modules` and no running Postgres;
+  the sibling that was already building rediscovered the identical wall minutes later,
+  because nobody pushed it.
+
+Push by `SendMessage` to that `worker-<n>`, with the finding quoted and what to do about it —
 delivery to a running worker is measured and costs it no turn (see
 [worktrees.md](worktrees.md#messaging-a-worker) and the correction path in
 [collaboration.md](collaboration.md#corrections-reach-work-in-flight)). The PM decides
@@ -145,7 +159,9 @@ unchanged.
 3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
    one clean squashed commit per member on the integration branch. Head commit carries
    `[skip ci]`, so this stays CI-free.
-4. Member → `status:batched`; tick the tracking checklist; `git worktree remove --force`
+4. Member → `status:batched`, **removing `status:in-review` in the same swap** (at most one
+   `status:` label per issue — adding without removing leaves it in two states and breaks
+   status queries); tick the tracking checklist; `git worktree remove --force`
    the path from the worker's completion notification (or its verdict) and `git branch -D`
    its `worktree-agent-<id>`; launch any sequenced successor. Anything sent back
    to the worker instead goes by `SendMessage` — see

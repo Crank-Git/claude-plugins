@@ -386,14 +386,29 @@ every single verdict buys nothing and costs a full-context pass each time.
    - Branch creation and naming details: [references/batching.md](references/batching.md).
 2. **Fill the pipeline up to `concurrency` workers** (across all live batches). Prefer finishing an in-flight batch over opening a new one — fewer live integration branches means fewer batch-level conflicts. **Overlapping file sets are fine** — isolation comes from per-issue worktrees and PM conflict resolution at sub-merge.
 3. **Plan + claim, per issue (PM):**
-   - **Locate (read-only, parallel):** fan out `Agent` calls (Explore / cavecrew-investigator) to map the files/call-sites the issue touches; take back a short summary.
+   - **Locate (read-only, parallel):** fan out `Agent` calls (Explore / cavecrew-investigator) to map the files/call-sites the issue touches; take back a short summary. **Tell every locate agent the batch's base branch and require it to read that ref**, not the default branch: for an epic batch, earlier members are already sub-merged into the integration branch and exist *nowhere else*. An agent that greps `main` will truthfully report a helper "does not exist anywhere" when a sibling built it an hour ago, and the worker then rebuilds it. Measured in a live run (Deepfield-TI epic #21): the locate pass for one member read `origin/main`, missed a UUIDv5 helper a merged sibling had added, and would have produced a second id scheme against a unique column.
    - **If the issue calls an external service, confirm the interface before you plan it.** Delegate a read of the vendor's current documentation (or the CLI's own `help`) and put the doc URL + pinned version in the plan. Never plan against a remembered API shape — see [references/external-apis.md](../../references/external-apis.md). Cannot confirm it → `status:needs-feedback`, not a guess.
    - Comment a short plan on the issue (approach, files, out-of-scope).
    - **Claim with compare-and-set:** immediately before swapping labels, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else remove `status:ready`, add `status:in-progress`, `forge.issue.assign` (assignee = lock; on Gitea resolve your login with `forge.user.login` first — `tea` has no `@me`).
    - If planning surfaces a user-only decision, don't guess: comment the question, label `status:needs-feedback`, drop the claim, pick different work.
-4. **Cross-check the batch's plans before you launch them.** Run this once per batch, after
-   step 3 has commented a plan for every member you are about to start, and only when **≥2
-   members launch together** (skip for singletons and standalone work). Spawn **one**
+4. **Cross-check the batch's plans — a gate, before the batch's first launch.** This is not a
+   step you may reach late. Plan **every** member the batch will start (step 3 for each of
+   them), then run this check, then launch any of them (step 5). **No member launches until
+   the check has reported.** Skip it only when the batch will start exactly one member, or
+   for standalone/hotfix work.
+
+   Getting the order wrong wastes the check. Measured in a live run (Deepfield-TI epic #21):
+   plan→claim→launch ran per issue, so one member was already building when the check found
+   that its issue text was wrong about which fields are mergeable. The finding was correct and
+   arrived too late to shape the work — it became a correction to push instead of a plan to
+   fix. Plan the set, check the set, then start the set.
+
+   **Post the result on the tracking issue even when nothing is found** — one comment,
+   `finding: batch cross-check, <batch ref>`, listing the pairs found *or* stating the clean
+   negative and what you compared. A check that is silent when it passes cannot be told apart
+   from a check that never ran, and it will quietly stop happening.
+
+   Spawn **one**
    read-only agent (Haiku is enough; Sonnet if the plans are dense) and give it just the
    plan comments — not the code, not the diffs. Ask it for exactly this: which plans claim
    the **same file, function, interface, migration, config key or route**, and where one
@@ -414,9 +429,10 @@ every single verdict buys nothing and costs a full-context pass each time.
 
    Why it earns its cost: the same collision found here costs one plan edit; found at C1 it
    costs two built branches and a semantic conflict. One small agent per batch, reading a
-   few short comments, is the cheapest gate in the loop. Record anything the workers should
-   know as a `finding:` on the tracking issue (see
-   [references/batching.md](references/batching.md)) rather than only in your own context.
+   few short comments, is the cheapest gate in the loop. Everything the check turns up that a
+   worker would want goes in that same tracking-issue comment (see
+   [references/batching.md](references/batching.md)), not only in your own context — including
+   anything the locate passes surfaced, such as work an already-merged sibling has done.
 
 5. **Hand off to a worker.** Launch with `Agent`, `agentType: "issue-flow:issue-worker"`, `run_in_background: true`, **`isolation: "worktree"`**, `name: "worker-<issue>"` (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it; the name keeps it addressable by `SendMessage` for rework), passing only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md). Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
@@ -435,7 +451,11 @@ Triggered by a worker's completion notification. Act on its `outcome`:
   2. **Conflict vs the integration branch** (a sibling just sub-merged): mechanical → resolve directly or via a short-lived worker; **semantic** (two intents on the same logic) → `status:needs-feedback` on both issues, park, do not guess.
   3. **Authority gate.** If `prAuthority` is `review-all` or `propose-only`, do **not** merge: ready the PR, request review, label the issue `status:awaiting-review`, notify once, and go schedule other work. Merge only after a human approving review lands (a reaction or a vague "looks good" is not one). Under `autonomous`/`batch-review`, sub-merges are yours.
   4. Sweep for new comments on the PR (Stage A0) — a "hold this" posted a minute ago outranks your gate — then merge the sub-PR: `forge.pr.ready` then `forge.pr.merge.squash` (on Gitea, follow with `forge.branch.delete` — `tea pr merge` does not remove the branch) (head commit already carries `[skip ci]`, so readying/merging stays CI-free).
-  5. Label the member `status:batched`, tick its checkbox on the epic/batch tracking issue (edit only your own marker block — see [collaboration.md](references/collaboration.md)), then remove the worktree from the worker's completion notification (`worktreePath`, or the `worktree` field of its verdict): `git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>` (a worker's tree always holds commits, so the harness never auto-removes it, and removing the tree leaves its harness branch behind). Launch any member that was sequenced behind it. Free the slot → Stage A/B.
+  5. **Swap** the member's status label — remove `status:in-review` (or whichever `status:` it
+     currently carries) and add `status:batched`. A status change is always a swap, never an
+     add: an issue carries **at most one** `status:` label ([labels.md](references/labels.md)),
+     and adding without removing leaves it in two states at once, which breaks every later
+     query that selects by status. Then tick its checkbox on the epic/batch tracking issue (edit only your own marker block — see [collaboration.md](references/collaboration.md)), then remove the worktree from the worker's completion notification (`worktreePath`, or the `worktree` field of its verdict): `git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>` (a worker's tree always holds commits, so the harness never auto-removes it, and removing the tree leaves its harness branch behind). Launch any member that was sequenced behind it. Free the slot → Stage A/B.
 
   **Anything that goes back to the worker** (an unevidenced criterion, a missed practice, a review comment, a mechanical conflict) goes back by **`SendMessage` to `worker-<issue>`** — it still holds its worktree and its branch, so nothing is re-pointed. Re-spawn only if it is no longer addressable, and then pass `base: <remote>/issue/<n>-<slug>`, never the integration branch: a fresh worker starts on the default branch, and pointing its branch at the integration branch would drop the PR's commits. Keep the worktree until the issue is `status:batched` or terminally parked — **except on `checkpoint`**, which reaps the worktree immediately (the status label is left untouched and the replacement worker gets a fresh tree from the harness; see Stage C1). See [references/issue-worker.md](references/issue-worker.md).
 

@@ -224,6 +224,22 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   matches in when it creates the worktree; if a test still fails purely because an env
   file or local config is missing, that is not a code problem — return `blocked` naming
   the exact file, don't invent credentials or commit a `.env`.
+- **A worktree has no installed dependencies and no running services — and a suite that
+  skips is not a suite that passes.** Your tree is a fresh checkout, so the install
+  directory (`node_modules`, `.venv`, `target`) is absent and every service the tests need
+  is down. Install first, then start what the suite requires. Two traps, both measured in a
+  live run:
+  - **A skipped suite reads like a green one.** Integration tests commonly self-skip when
+    their database is not reachable, and the runner then prints something like
+    `Test Files 1 skipped (1)` and exits 0. That is *not* a pass, and reporting it as
+    `localChecks: green` is a false verdict. Before you trust a green run, confirm the
+    integration tests actually **ran**; if they skipped, start the service and run again.
+  - **You are not the only worker on this machine.** Siblings start the same services. Use
+    a **unique project/namespace of your own** (e.g. `docker compose -p <issue-branch>`) so
+    you do not tear down a sibling's container. If the port is **fixed by the project's
+    config** rather than chosen by you, you cannot both bind it — do not fight over it:
+    finish if you already hold it, otherwise return `blocked` naming the fixed port, and
+    post a `finding:` so the PM can sequence the members instead of running them together.
 - **You cannot answer a permission prompt** — you run in the background with nobody to
   ask. If a command is refused by permissions, return `blocked` naming the exact command
   so the PM can get it added to the project's `.claude/settings.json` allow-list. Never
