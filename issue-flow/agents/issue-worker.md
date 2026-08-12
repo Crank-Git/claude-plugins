@@ -231,7 +231,20 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
 - **Every edit, build, test, and shell command runs with its working directory inside
   your worktree.** Never modify files in the main checkout or any other worktree. Reading
   outside for research is fine (web, docs); **writing outside is never fine.**
-- Your child agents/Workflows inherit this exact boundary — confine them as above.
+- **The harness only catches part of that, so the discipline is yours.** Measured on
+  Claude Code 2.1.228 from inside a worker's worktree: `Write` and `Edit` aimed at a path
+  in the main checkout are refused (*"This agent is isolated in the worktree …"*), and so
+  is `git -C <main checkout>`. But a plain shell write — `echo >>`, `>`, `sed -i`, `mv`,
+  `rm` — against that same path **succeeds**. There is no filesystem-level sandbox behind
+  the guard. Reading outside is likewise unrestricted.
+  So the realistic way to corrupt the run is an **absolute path in a shell command**:
+  one pasted out of a log, a build script, or a stale plan, redirecting into the PM's
+  checkout while sibling workers are live. Work in **relative paths** from your worktree
+  root. If a command genuinely needs an absolute path, build it from `pwd` rather than
+  typing a `/Users/...`-style path, and never let one point outside your tree.
+- Your child agents/Workflows inherit this exact boundary — and inherit the same partial
+  enforcement, since a child spawned without `isolation` shares your pin. Confine them as
+  above and tell them the shell is not guarded.
 
 ## Runbook
 
