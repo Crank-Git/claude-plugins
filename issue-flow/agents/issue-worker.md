@@ -251,6 +251,20 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
     finished, and a sibling's integration tests silently began skipping mid-run — a green
     summary over zero integration coverage. Issue-scoped naming for a fixed-port service
     causes exactly the false green described above.
+  - **A shared service means a sibling can make your suite fail.** Sharing buys correct
+    coverage and costs isolation. Namespace your **rows** (a marker prefix, a per-run
+    tenant) so your data cannot be confused with a sibling's — but understand what that
+    does not cover: **whole-database state is not isolable.** Row counts and planner
+    statistics are shared, so an assertion about a *query plan* or a row *count over the
+    whole table* is a claim about whatever the neighbours are doing. Measured in a live
+    run: an `expect(plan).toContain("<index name>")` assertion failed once under a full
+    suite because a sibling's in-flight rows moved the planner onto a different index,
+    then passed alone and passed on the next full run.
+    So: **a failure in code your branch does not touch is not automatically yours.** Re-run
+    it before you believe it. If it reproduces twice on your branch, it is real — report it.
+    If it does not, post a `finding:` naming the test and the interference so the next
+    worker does not "fix" a query that was never broken. Never quiet a flake by loosening an
+    assertion that belongs to another issue; say so and leave it to its owner.
 - **You cannot answer a permission prompt** — you run in the background with nobody to
   ask. If a command is refused by permissions, return `blocked` naming the exact command
   so the PM can get it added to the project's `.claude/settings.json` allow-list. Never
