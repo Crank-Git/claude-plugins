@@ -60,6 +60,78 @@ a plain `git worktree add .claude/worktrees/<integration-branch>` driven with
 `base: <remote>/<integration-branch>`, which lands there via its own
 `git checkout -B <integration-branch> <remote>/<integration-branch>`.
 
+## The findings log — what one member learns, the batch keeps
+
+Members of a batch are chosen because they share an area, files, or a dependency chain,
+so they keep meeting the same surprises: a helper whose signature contradicts its
+docstring, a fixture that has to be seeded before the suite passes, an interface one
+member is establishing that another is about to consume. Each worker is isolated, so by
+default that knowledge dies in its worktree and the next member pays for it again — or
+worse, builds against the stale assumption and the two only disagree at the sub-merge
+gate.
+
+The fix is a per-batch log, kept as **comments on the batch's tracking issue** (the epic
+issue, or the `type:batch` issue). Comments, not the issue body: workers append
+concurrently, and the body is a PM-owned block that a worker must not clobber (see
+[collaboration.md](collaboration.md)).
+
+**Workers write.** When a worker learns something a sibling would want, it posts one
+comment on the tracking issue, first line exactly:
+
+```
+finding: <one line — the fact, not the story>
+```
+
+followed by a short paragraph with the evidence (`file:line`, the command, the error).
+What qualifies: a documented or spec'd behavior that turns out to be wrong; a shared
+interface it is creating or changing; a non-obvious setup/test prerequisite; a
+constraint discovered the hard way. What does not: progress updates, anything already
+in the plan, and anything specific to its own issue — those belong on its own issue.
+
+**Workers read.** Every worker reads the tracking issue's `finding:` comments as its
+first research action, before it plans its edits, and again on a rework or replacement
+spawn — a checkpoint replacement inherits none of the original's context, so the log is
+how the batch's knowledge outlives it.
+
+**The PM relays the urgent ones.** A worker reads the log when it starts, so the log only
+ever reaches workers that start *after* a finding lands. For anyone already running, the
+push is the only channel — and the PM decides, at the moment a `finding:` appears, whether
+a live sibling needs it now.
+
+Push it if either is true:
+
+- It **invalidates an assumption a live sibling is working from** — a correctness problem.
+- It **would save a live sibling from rediscovering it** — a cost problem. Setup
+  prerequisites, environment traps, a tool invocation that has to be shaped a particular
+  way. These are the cheapest wins and the easiest to miss, because nothing is *wrong*
+  until the sibling wastes the same hour. Measured in a live run (Deepfield-TI epic #21):
+  one worker logged that a fresh worktree has no `node_modules` and no running Postgres;
+  the sibling that was already building rediscovered the identical wall minutes later,
+  because nobody pushed it.
+
+Push by `SendMessage` to that `worker-<n>`, with the finding quoted and what to do about it —
+delivery to a running worker is measured and costs it no turn (see
+[worktrees.md](worktrees.md#messaging-a-worker) and the correction path in
+[collaboration.md](collaboration.md#corrections-reach-work-in-flight)). The PM decides
+who is affected; it does not broadcast every finding to every worker.
+
+**Carry forward what constrains someone else.** The log dies with the batch, so a finding
+that limits work **outside** it needs a home where that work will look:
+
+- It changes what the shipped product is → the repo (spec, README, a code comment), as part
+  of the change.
+- It constrains **another epic or a specific open issue** → comment it **on that issue**,
+  headed `Carried forward from <this batch> — <the constraint>`, naming what it rules out
+  and what the options are. Do not decide for that issue; record the constraint and leave
+  the decision to whoever works it.
+
+Recording it only where it was found buries it: nobody planning the other epic reads a
+sibling's closed sub-issue. This is worth stating because workers invent it on their own —
+epic #32 in the dogfooded repo carries a `Carried forward from Epic #7` note that a worker
+wrote unprompted — and a practice that useful should not depend on being reinvented.
+
+Cost: one extra issue read per worker start, one comment per genuine discovery.
+
 ## Keeping sub-issue PRs CI-free
 
 Two mechanisms, layered:
@@ -100,7 +172,9 @@ unchanged.
 3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
    one clean squashed commit per member on the integration branch. Head commit carries
    `[skip ci]`, so this stays CI-free.
-4. Member → `status:batched`; tick the tracking checklist; `git worktree remove --force`
+4. Member → `status:batched`, **removing `status:in-review` in the same swap** (at most one
+   `status:` label per issue — adding without removing leaves it in two states and breaks
+   status queries); tick the tracking checklist; `git worktree remove --force`
    the path from the worker's completion notification (or its verdict) and `git branch -D`
    its `worktree-agent-<id>`; launch any sequenced successor. Anything sent back
    to the worker instead goes by `SendMessage` — see
