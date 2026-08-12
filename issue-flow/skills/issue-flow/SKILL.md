@@ -391,22 +391,31 @@ every single verdict buys nothing and costs a full-context pass each time.
    - Comment a short plan on the issue (approach, files, out-of-scope).
    - **Claim with compare-and-set:** immediately before swapping labels, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else remove `status:ready`, add `status:in-progress`, `forge.issue.assign` (assignee = lock; on Gitea resolve your login with `forge.user.login` first — `tea` has no `@me`).
    - If planning surfaces a user-only decision, don't guess: comment the question, label `status:needs-feedback`, drop the claim, pick different work.
-4. **Cross-check the batch's plans — a gate, before the batch's first launch.** This is not a
-   step you may reach late. Plan **every** member the batch will start (step 3 for each of
-   them), then run this check, then launch any of them (step 5). **No member launches until
-   the check has reported.** Skip it only when the batch will start exactly one member, or
-   for standalone/hotfix work.
+4. **Cross-check the batch's plans — a gate, before the batch's first launch.**
+
+   **The deliverable of this step is a comment, and the step is not done until it exists.**
+   Post it on the batch's tracking issue, first line `finding: batch cross-check, <batch ref>`,
+   listing the pairs found **or** stating the clean negative and naming what you compared.
+   Then launch. A check with no artifact did not happen, whatever you concluded — and a check
+   that only speaks when it finds something is one you cannot audit and will quietly stop
+   running.
+
+   This is the failure mode measured on its first outing: a four-member batch of unrelated
+   issues went from its last plan to its first launch in **seven seconds** with no comment
+   anywhere, so whether the check ran at all is unknowable. Nothing was wrong with the batch.
+   That is exactly when the step evaporates — there are no pairs to act on, so there is
+   nothing that forces you to show your work. Post the negative.
+
+   Order: plan **every** member the batch will start (step 3 for each of them), then run this
+   check, then launch any of them (step 5). **No member goes `status:in-progress` before that
+   comment is on the tracking issue.** Skip the step only when the batch will start exactly
+   one member, or for standalone/hotfix work.
 
    Getting the order wrong wastes the check. Measured in a live run (Deepfield-TI epic #21):
    plan→claim→launch ran per issue, so one member was already building when the check found
    that its issue text was wrong about which fields are mergeable. The finding was correct and
    arrived too late to shape the work — it became a correction to push instead of a plan to
    fix. Plan the set, check the set, then start the set.
-
-   **Post the result on the tracking issue even when nothing is found** — one comment,
-   `finding: batch cross-check, <batch ref>`, listing the pairs found *or* stating the clean
-   negative and what you compared. A check that is silent when it passes cannot be told apart
-   from a check that never ran, and it will quietly stop happening.
 
    Spawn **one**
    read-only agent (Haiku is enough; Sonnet if the plans are dense) and give it just the
@@ -434,7 +443,11 @@ every single verdict buys nothing and costs a full-context pass each time.
    [references/batching.md](references/batching.md)), not only in your own context — including
    anything the locate passes surfaced, such as work an already-merged sibling has done.
 
-5. **Hand off to a worker.** Launch with `Agent`, `agentType: "issue-flow:issue-worker"`, `run_in_background: true`, **`isolation: "worktree"`**, `name: "worker-<issue>"` (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it; the name keeps it addressable by `SendMessage` for rework), passing only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md). Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
+5. **Hand off to a worker.** For a batch that will start more than one member, **check first
+   that step 4's `finding: batch cross-check` comment is on the tracking issue** — if it is
+   not, go back and do step 4; launching without it is the one ordering mistake that cannot be
+   repaired afterwards, because the plans are already being built. Launch with `Agent`,
+   `agentType: "issue-flow:issue-worker"`, `run_in_background: true`, **`isolation: "worktree"`**, `name: "worker-<issue>"` (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it; the name keeps it addressable by `SendMessage` for rework), passing only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md). Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
 ## Stage C — Integrate (two gates)
 
