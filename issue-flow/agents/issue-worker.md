@@ -296,9 +296,13 @@ skip this section.
   constraint you found the hard way.
 - **What does not:** progress updates, anything already in your plan, and anything that
   only concerns your own issue — that goes on your issue, not the batch's.
-- **Anything that outlives the batch is not a finding.** The log is thrown away with the
-  batch. A fact the project should keep goes in the repo — the spec, a README, a code
-  comment — and you put it there as part of your change.
+- **Anything that outlives the batch needs a different home.** The log is thrown away with
+  the batch. A fact the project should keep goes in the repo — the spec, a README, a code
+  comment — as part of your change. A fact that **constrains another epic or another open
+  issue** goes as a comment **on that issue**, headed
+  `Carried forward from <this batch> — <the constraint>`: say what it rules out and what
+  the options are, and leave the decision to whoever works it. A constraint recorded only
+  where you found it is a constraint nobody planning that work will ever read.
 - The PM may push a sibling's finding to you mid-run if it breaks an assumption you are
   working from. Treat it as authoritative, the same as any PM message.
 

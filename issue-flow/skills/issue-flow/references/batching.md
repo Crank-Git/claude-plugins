@@ -115,9 +115,22 @@ delivery to a running worker is measured and costs it no turn (see
 [collaboration.md](collaboration.md#corrections-reach-work-in-flight)). The PM decides
 who is affected; it does not broadcast every finding to every worker.
 
-Cost: one extra issue read per worker start, one comment per genuine discovery. The log
-dies with the batch — it is not project documentation. Anything that outlives the batch
-belongs in the repo (spec, README, a code comment) and the worker puts it there instead.
+**Carry forward what constrains someone else.** The log dies with the batch, so a finding
+that limits work **outside** it needs a home where that work will look:
+
+- It changes what the shipped product is → the repo (spec, README, a code comment), as part
+  of the change.
+- It constrains **another epic or a specific open issue** → comment it **on that issue**,
+  headed `Carried forward from <this batch> — <the constraint>`, naming what it rules out
+  and what the options are. Do not decide for that issue; record the constraint and leave
+  the decision to whoever works it.
+
+Recording it only where it was found buries it: nobody planning the other epic reads a
+sibling's closed sub-issue. This is worth stating because workers invent it on their own —
+epic #32 in the dogfooded repo carries a `Carried forward from Epic #7` note that a worker
+wrote unprompted — and a practice that useful should not depend on being reinvented.
+
+Cost: one extra issue read per worker start, one comment per genuine discovery.
 
 ## Keeping sub-issue PRs CI-free
 
