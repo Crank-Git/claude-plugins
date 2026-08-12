@@ -30,6 +30,10 @@ branch:       issue/<number>-<slug>
 base:         <remote>/<integration-branch or dev>
 ci:           skip | run
 batch:        epic #<n> | batch #<n> | standalone
+crossCheck:   <URL of the batch cross-check comment> | n/a — standalone or single-member batch
+              Required whenever the batch starts more than one member. Read it before you
+              plan your edits: it is where the PM records what a sibling already built, which
+              plan was narrowed and why, and which shared resources are yours.
 remote:       <remote>
 forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
               repo, interface}. Use it to pick gh or tea. Never omit it; a worker that

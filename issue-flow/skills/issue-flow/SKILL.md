@@ -454,10 +454,14 @@ every single verdict buys nothing and costs a full-context pass each time.
    [references/batching.md](references/batching.md)), not only in your own context — including
    anything the locate passes surfaced, such as work an already-merged sibling has done.
 
-5. **Hand off to a worker.** For a batch that will start more than one member, **check first
-   that step 4's `finding: batch cross-check` comment is on the tracking issue** — if it is
-   not, go back and do step 4; launching without it is the one ordering mistake that cannot be
-   repaired afterwards, because the plans are already being built. Launch with `Agent`,
+5. **Hand off to a worker.** For a batch starting more than one member, the brief's
+   **`crossCheck` field is the URL of step 4's comment**, and it is required — you cannot fill
+   it in before the comment exists, which is the point. Do not launch with it blank, and do not
+   write "pending": the ordering mistake it prevents is the one that cannot be repaired
+   afterwards, because by the time the check reports, the plans it would have corrected are
+   already being built. Measured failing in a live run even with an explicit
+   "check the comment exists first" instruction here, which is why it is now a field rather
+   than a reminder. Launch with `Agent`,
    `agentType: "issue-flow:issue-worker"`, `run_in_background: true`, **`isolation: "worktree"`**, `name: "worker-<issue>"` (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it; the name keeps it addressable by `SendMessage` for rework), passing only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md). Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
 ## Stage C — Integrate (two gates)
