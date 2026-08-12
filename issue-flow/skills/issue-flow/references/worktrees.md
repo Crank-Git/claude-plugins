@@ -74,6 +74,8 @@ Verified by direct measurement on 2.1.224, with two workers running concurrently
 - `SendMessage` to an **already-completed** worker resumes it with its context, its
   worktree, and its branch intact, and its earlier commits still in place. This is what
   makes the rework path below safe.
+- `SendMessage` to a **still-running** worker is delivered too — see
+  [Messaging a worker](#messaging-a-worker).
 - `run_in_background: true` and `isolation: "worktree"` compose — both take.
 - Neither agent's directory moved when the other started or finished.
 - The PM's working directory never moved, and `git -C <checkout>` from the PM returned
@@ -82,6 +84,38 @@ Verified by direct measurement on 2.1.224, with two workers running concurrently
   wording. Cross-worktree writes stay blocked; that is the guard working as intended.
 - A child agent spawned with no `isolation` parameter ran in its parent's worktree, on
   the parent's branch, and could write there.
+
+## Messaging a worker
+
+A worker does not have to finish before the PM can tell it something. Measured directly on
+**Claude Code 2.1.228**, with a background worker spawned `isolation: "worktree"` and
+stepping through twenty separate turns:
+
+- A `SendMessage` sent while the worker was **mid-run** arrived. The tool result says so
+  explicitly: *"Message queued for delivery to `<name>` at its next tool round."*
+- Delivery is at a **turn boundary, not an interrupt**. The message landed cleanly between
+  two steps, roughly two turns (~11s) after it was sent. The worker read it, acted on it,
+  and carried on with the rest of its work — no restart, no lost context, no step spent
+  waiting to receive.
+- The same run confirmed the reverse of the rule above: a background agent spawned
+  **without** `isolation` never received the message at all, across two attempts. It is
+  routed to a different, mailbox-style channel that does not drain into a running loop,
+  and it does not appear in `ListAgents` as a subagent.
+
+Two consequences the PM should treat as load-bearing:
+
+1. **`name:` + `isolation: "worktree"` at spawn is what keeps a worker addressable.**
+   Isolation is not only about filesystem separation — dropping it (for a "small" issue,
+   say) also silently breaks the `SendMessage` rework path. Always pass both.
+2. **The un-isolated agents are unreachable by design.** `deploy-watcher`, `code-auditor`
+   and `ux-explorer` are spawned without isolation, so nothing can be pushed to them
+   mid-run; `TaskStop` is the only lever. Do not build a flow that depends on messaging
+   them.
+
+Because delivery costs the worker no turn of its own, a correction that arrives while it
+works is cheap. Use it: see the mid-flight push in
+[collaboration.md](collaboration.md) and the batch findings log in
+[batching.md](batching.md).
 
 ## The one thing you must do yourself
 

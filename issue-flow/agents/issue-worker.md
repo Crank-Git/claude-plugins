@@ -224,6 +224,47 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   matches in when it creates the worktree; if a test still fails purely because an env
   file or local config is missing, that is not a code problem — return `blocked` naming
   the exact file, don't invent credentials or commit a `.env`.
+- **A worktree has no installed dependencies and no running services — and a suite that
+  skips is not a suite that passes.** Your tree is a fresh checkout, so the install
+  directory (`node_modules`, `.venv`, `target`) is absent and every service the tests need
+  is down. Install first, then start what the suite requires. Two traps, both measured in a
+  live run:
+  - **A skipped suite reads like a green one.** Integration tests commonly self-skip when
+    their database is not reachable, and the runner then prints something like
+    `Test Files 1 skipped (1)` and exits 0. That is *not* a pass, and reporting it as
+    `localChecks: green` is a false verdict. Before you trust a green run, confirm the
+    integration tests actually **ran**; if they skipped, start the service and run again.
+  - **You are not the only worker on this machine, and a shared service is not yours to
+    own.** Which way to namespace depends on who picks the port:
+    - **The port is yours to choose** → run the service under a name of your own so you
+      cannot collide with a sibling.
+    - **The port is fixed by the project's config** (a `DATABASE_URL` the tests read, say)
+      → every member of the batch must share **one** instance, named for the **batch**, not
+      for your issue. Check whether it is already up before starting anything; if it is,
+      use it. If you must start it, give it a stable batch-scoped name and post a
+      `finding:` naming the container and the check command so siblings find it.
+    - **Never stop, remove, or `compose down` a service you did not start**, and never tear
+      down a shared one at all — a later member may still be running. Leave it up when you
+      finish.
+
+    Measured in a live run: a per-issue compose project was torn down when its owner
+    finished, and a sibling's integration tests silently began skipping mid-run — a green
+    summary over zero integration coverage. Issue-scoped naming for a fixed-port service
+    causes exactly the false green described above.
+  - **A shared service means a sibling can make your suite fail.** Sharing buys correct
+    coverage and costs isolation. Namespace your **rows** (a marker prefix, a per-run
+    tenant) so your data cannot be confused with a sibling's — but understand what that
+    does not cover: **whole-database state is not isolable.** Row counts and planner
+    statistics are shared, so an assertion about a *query plan* or a row *count over the
+    whole table* is a claim about whatever the neighbours are doing. Measured in a live
+    run: an `expect(plan).toContain("<index name>")` assertion failed once under a full
+    suite because a sibling's in-flight rows moved the planner onto a different index,
+    then passed alone and passed on the next full run.
+    So: **a failure in code your branch does not touch is not automatically yours.** Re-run
+    it before you believe it. If it reproduces twice on your branch, it is real — report it.
+    If it does not, post a `finding:` naming the test and the interference so the next
+    worker does not "fix" a query that was never broken. Never quiet a flake by loosening an
+    assertion that belongs to another issue; say so and leave it to its owner.
 - **You cannot answer a permission prompt** — you run in the background with nobody to
   ask. If a command is refused by permissions, return `blocked` naming the exact command
   so the PM can get it added to the project's `.claude/settings.json` allow-list. Never
@@ -231,11 +272,58 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
 - **Every edit, build, test, and shell command runs with its working directory inside
   your worktree.** Never modify files in the main checkout or any other worktree. Reading
   outside for research is fine (web, docs); **writing outside is never fine.**
-- Your child agents/Workflows inherit this exact boundary — confine them as above.
+- **The harness only catches part of that, so the discipline is yours.** Measured on
+  Claude Code 2.1.228 from inside a worker's worktree: `Write` and `Edit` aimed at a path
+  in the main checkout are refused (*"This agent is isolated in the worktree …"*), and so
+  is `git -C <main checkout>`. But a plain shell write — `echo >>`, `>`, `sed -i`, `mv`,
+  `rm` — against that same path **succeeds**. There is no filesystem-level sandbox behind
+  the guard. Reading outside is likewise unrestricted.
+  So the realistic way to corrupt the run is an **absolute path in a shell command**:
+  one pasted out of a log, a build script, or a stale plan, redirecting into the PM's
+  checkout while sibling workers are live. Work in **relative paths** from your worktree
+  root. If a command genuinely needs an absolute path, build it from `pwd` rather than
+  typing a `/Users/...`-style path, and never let one point outside your tree.
+- Your child agents/Workflows inherit this exact boundary — and inherit the same partial
+  enforcement, since a child spawned without `isolation` shares your pin. Confine them as
+  above and tell them the shell is not guarded.
+
+## The batch findings log — read it first, write to it when you learn something
+
+Your batch's members share an area, files, or a dependency chain, so they hit the same
+surprises. The findings log is how one member's discovery reaches the others instead of
+dying in your worktree. It lives as comments on your batch's **tracking issue** — the
+epic or `type:batch` issue named by `batch` in your brief. Standalone work has no log;
+skip this section.
+
+- **Read it before you plan your edits.** Fetch the tracking issue's comments and read
+  every one whose first line starts `finding:`. Do this even as a replacement worker —
+  especially then, since you inherit none of your predecessor's context and the log is
+  where the batch's knowledge is kept.
+- **Write one when you learn something a sibling would want.** Post a comment on the
+  tracking issue whose first line is exactly:
+  ```
+  finding: <one line — the fact, not the story>
+  ```
+  then a short paragraph of evidence (`file:line`, the command, the error).
+- **What qualifies:** documented or spec'd behavior that turns out to be wrong; a shared
+  interface you are creating or changing; a non-obvious setup or test prerequisite; a
+  constraint you found the hard way.
+- **What does not:** progress updates, anything already in your plan, and anything that
+  only concerns your own issue — that goes on your issue, not the batch's.
+- **Anything that outlives the batch needs a different home.** The log is thrown away with
+  the batch. A fact the project should keep goes in the repo — the spec, a README, a code
+  comment — as part of your change. A fact that **constrains another epic or another open
+  issue** goes as a comment **on that issue**, headed
+  `Carried forward from <this batch> — <the constraint>`: say what it rules out and what
+  the options are, and leave the decision to whoever works it. A constraint recorded only
+  where you found it is a constraint nobody planning that work will ever read.
+- The PM may push a sibling's finding to you mid-run if it breaks an assumption you are
+  working from. Treat it as authoritative, the same as any PM message.
 
 ## Runbook
 
-1. **Research & implement** the issue per the plan and the repo's conventions. Run the
+1. **Research & implement** the issue per the plan and the repo's conventions. Read the
+   batch findings log first (see above) — before you plan your edits, not after. Run the
    project's tests/linters as you go. Commit in logical units referencing `#<number>`;
    when `ci: skip`, end **every** commit message you push with `[skip ci]`.
    If the issue splits into **disjoint** paths (e.g. `frontend/` vs `backend/`), you may
