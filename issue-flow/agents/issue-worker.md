@@ -234,12 +234,23 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
     `Test Files 1 skipped (1)` and exits 0. That is *not* a pass, and reporting it as
     `localChecks: green` is a false verdict. Before you trust a green run, confirm the
     integration tests actually **ran**; if they skipped, start the service and run again.
-  - **You are not the only worker on this machine.** Siblings start the same services. Use
-    a **unique project/namespace of your own** (e.g. `docker compose -p <issue-branch>`) so
-    you do not tear down a sibling's container. If the port is **fixed by the project's
-    config** rather than chosen by you, you cannot both bind it — do not fight over it:
-    finish if you already hold it, otherwise return `blocked` naming the fixed port, and
-    post a `finding:` so the PM can sequence the members instead of running them together.
+  - **You are not the only worker on this machine, and a shared service is not yours to
+    own.** Which way to namespace depends on who picks the port:
+    - **The port is yours to choose** → run the service under a name of your own so you
+      cannot collide with a sibling.
+    - **The port is fixed by the project's config** (a `DATABASE_URL` the tests read, say)
+      → every member of the batch must share **one** instance, named for the **batch**, not
+      for your issue. Check whether it is already up before starting anything; if it is,
+      use it. If you must start it, give it a stable batch-scoped name and post a
+      `finding:` naming the container and the check command so siblings find it.
+    - **Never stop, remove, or `compose down` a service you did not start**, and never tear
+      down a shared one at all — a later member may still be running. Leave it up when you
+      finish.
+
+    Measured in a live run: a per-issue compose project was torn down when its owner
+    finished, and a sibling's integration tests silently began skipping mid-run — a green
+    summary over zero integration coverage. Issue-scoped naming for a fixed-port service
+    causes exactly the false green described above.
 - **You cannot answer a permission prompt** — you run in the background with nobody to
   ask. If a command is refused by permissions, return `blocked` naming the exact command
   so the PM can get it added to the project's `.claude/settings.json` allow-list. Never
