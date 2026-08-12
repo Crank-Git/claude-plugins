@@ -246,9 +246,39 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   enforcement, since a child spawned without `isolation` shares your pin. Confine them as
   above and tell them the shell is not guarded.
 
+## The batch findings log — read it first, write to it when you learn something
+
+Your batch's members share an area, files, or a dependency chain, so they hit the same
+surprises. The findings log is how one member's discovery reaches the others instead of
+dying in your worktree. It lives as comments on your batch's **tracking issue** — the
+epic or `type:batch` issue named by `batch` in your brief. Standalone work has no log;
+skip this section.
+
+- **Read it before you plan your edits.** Fetch the tracking issue's comments and read
+  every one whose first line starts `finding:`. Do this even as a replacement worker —
+  especially then, since you inherit none of your predecessor's context and the log is
+  where the batch's knowledge is kept.
+- **Write one when you learn something a sibling would want.** Post a comment on the
+  tracking issue whose first line is exactly:
+  ```
+  finding: <one line — the fact, not the story>
+  ```
+  then a short paragraph of evidence (`file:line`, the command, the error).
+- **What qualifies:** documented or spec'd behavior that turns out to be wrong; a shared
+  interface you are creating or changing; a non-obvious setup or test prerequisite; a
+  constraint you found the hard way.
+- **What does not:** progress updates, anything already in your plan, and anything that
+  only concerns your own issue — that goes on your issue, not the batch's.
+- **Anything that outlives the batch is not a finding.** The log is thrown away with the
+  batch. A fact the project should keep goes in the repo — the spec, a README, a code
+  comment — and you put it there as part of your change.
+- The PM may push a sibling's finding to you mid-run if it breaks an assumption you are
+  working from. Treat it as authoritative, the same as any PM message.
+
 ## Runbook
 
-1. **Research & implement** the issue per the plan and the repo's conventions. Run the
+1. **Research & implement** the issue per the plan and the repo's conventions. Read the
+   batch findings log first (see above) — before you plan your edits, not after. Run the
    project's tests/linters as you go. Commit in logical units referencing `#<number>`;
    when `ci: skip`, end **every** commit message you push with `[skip ci]`.
    If the issue splits into **disjoint** paths (e.g. `frontend/` vs `backend/`), you may

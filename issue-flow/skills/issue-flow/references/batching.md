@@ -60,6 +60,51 @@ a plain `git worktree add .claude/worktrees/<integration-branch>` driven with
 `base: <remote>/<integration-branch>`, which lands there via its own
 `git checkout -B <integration-branch> <remote>/<integration-branch>`.
 
+## The findings log — what one member learns, the batch keeps
+
+Members of a batch are chosen because they share an area, files, or a dependency chain,
+so they keep meeting the same surprises: a helper whose signature contradicts its
+docstring, a fixture that has to be seeded before the suite passes, an interface one
+member is establishing that another is about to consume. Each worker is isolated, so by
+default that knowledge dies in its worktree and the next member pays for it again — or
+worse, builds against the stale assumption and the two only disagree at the sub-merge
+gate.
+
+The fix is a per-batch log, kept as **comments on the batch's tracking issue** (the epic
+issue, or the `type:batch` issue). Comments, not the issue body: workers append
+concurrently, and the body is a PM-owned block that a worker must not clobber (see
+[collaboration.md](collaboration.md)).
+
+**Workers write.** When a worker learns something a sibling would want, it posts one
+comment on the tracking issue, first line exactly:
+
+```
+finding: <one line — the fact, not the story>
+```
+
+followed by a short paragraph with the evidence (`file:line`, the command, the error).
+What qualifies: a documented or spec'd behavior that turns out to be wrong; a shared
+interface it is creating or changing; a non-obvious setup/test prerequisite; a
+constraint discovered the hard way. What does not: progress updates, anything already
+in the plan, and anything specific to its own issue — those belong on its own issue.
+
+**Workers read.** Every worker reads the tracking issue's `finding:` comments as its
+first research action, before it plans its edits, and again on a rework or replacement
+spawn — a checkpoint replacement inherits none of the original's context, so the log is
+how the batch's knowledge outlives it.
+
+**The PM relays the urgent ones.** A finding that merely informs can wait to be read. A
+finding that **invalidates an assumption a live sibling is working from** is pushed now,
+by `SendMessage` to that `worker-<n>`, with the finding quoted and what to do about it —
+delivery to a running worker is measured and costs it no turn (see
+[worktrees.md](worktrees.md#messaging-a-worker) and the correction path in
+[collaboration.md](collaboration.md#corrections-reach-work-in-flight)). The PM decides
+who is affected; it does not broadcast every finding to every worker.
+
+Cost: one extra issue read per worker start, one comment per genuine discovery. The log
+dies with the batch — it is not project documentation. Anything that outlives the batch
+belongs in the repo (spec, README, a code comment) and the worker puts it there instead.
+
 ## Keeping sub-issue PRs CI-free
 
 Two mechanisms, layered:
