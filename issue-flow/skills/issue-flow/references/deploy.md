@@ -49,9 +49,11 @@ on a self-hosted `act_runner`. Query it with `forge.run.list` filtered to the de
 branch, and read a failure with `forge.run.log`.
 
 There is no `--watch`. The deploy-watcher waits with the single-call shell loop in
-[../../../references/forge.md](../../../references/forge.md) — `pollSeconds` and
-`maxMinutes` are the loop's interval and iteration count, **not** a turn budget for the
-agent — and returns one terminal deployment per run, exactly as for the other providers.
+[../../../references/forge.md](../../../references/forge.md), launched with
+`run_in_background: true` so the wait is not cut short by the `Bash` timeout ceiling —
+`pollSeconds` and `maxMinutes` are the loop's interval and iteration count, **not** a turn
+budget for the agent and **not** bounded by that ceiling once the call is backgrounded —
+and returns one terminal deployment per run, exactly as for the other providers.
 
 Because the runner is the operator's own hardware, there is no minute budget to protect.
 The batch model still applies — it exists for merge hygiene as much as for cost.
@@ -132,8 +134,8 @@ removes it when the fix deploys and verifies.
 | outcome | PM action |
 |---|---|
 | `succeeded` | **Verify before declaring done** — build-green ≠ working. Spawn `issue-flow:deploy-verifier` against the deployed URL. On `verified`: remove `status:deploying`, comment confirmation + screenshot. On `broken`/`unreachable`: treat as a deploy failure (rows below). |
-| `failed` / `rolled-back` (suspectedCause `code-regression`) | Add `status:deploy-failed`, then open a `priority:high` `type:hotfix` `status:ready` **hotfix issue** citing the failed deploy, commit, failing step, and log excerpt. Hotfixes **bypass batching**: schedule a standalone worker immediately (`ci: run`, normal PR straight to dev). |
-| `failed` (suspectedCause `config`/`secret`/`quota`/`infra`) | Add `status:deploy-failed`, then route for **human input**: `status:needs-feedback` (or `status:blocked` for an active outage), name the cause, surface to the user. Do not guess at infra/secret changes. |
+| `failed` / `rolled-back` (suspectedCause `code-regression`) | `forge.issue.status.set <n> status:deploy-failed` (removes `status:deploying`), then open a `priority:high` `type:hotfix` `status:ready` **hotfix issue** citing the failed deploy, commit, failing step, and log excerpt. Hotfixes **bypass batching**: schedule a standalone worker immediately (`ci: run`, normal PR straight to dev). |
+| `failed` (suspectedCause `config`/`secret`/`quota`/`infra`) | `forge.issue.status.set <n> status:deploy-failed` (removes `status:deploying`), then route for **human input as a comment** — `needs human input: <what>` naming the cause — and surface it to the user per the feedback policy. **No second `status:` label:** `deploy-failed` stays the only one, so no park is added here for Stage A0 step 3b to destroy. The cost is that the issue is not in the Stage A step 4 `status:needs-feedback` gather; the surfacing is what reaches the user. Do not guess at infra/secret changes. |
 | `timed-out` | Re-query once; if still not terminal, surface to the user with the job link — don't assume success. Leave `status:deploying` in place. |
 
 A hotfix issue flows worker → PR (CI on, no batch) → merge → **Stage D again**, so a

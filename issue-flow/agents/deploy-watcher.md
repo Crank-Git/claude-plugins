@@ -73,10 +73,15 @@ resolves to the right CLI from the `forge` block.
 3. Poll only until a **terminal** state or `maxMinutes` elapses. If the budget elapses
    with no terminal state, return `timed-out` with the job link. Never claim a success
    you did not observe.
-   **Wait inside one `Bash` call, not one call per check.** `pollSeconds` is the `sleep`
-   interval *inside* a shell loop and `maxMinutes` sets its iteration count; both belong
-   to the loop, not to you. A turn per check re-reads your whole context every time and
-   turns a routine 30-minute watch into 60 full-context round trips. Pattern:
+   **Wait inside one `Bash` call, not one call per check — and launch that call with
+   `run_in_background: true`.** `pollSeconds` is the `sleep` interval *inside* a shell loop
+   and `maxMinutes` sets its iteration count; both belong to the loop, not to you. A turn
+   per check re-reads your whole context every time and turns a routine 30-minute watch
+   into 60 full-context round trips. But a *foreground* call cannot last 30 minutes either:
+   the `Bash` ceiling is 600000 ms (default 120000), and a killed call loses the verdict
+   rather than delaying it. Background it and the ceiling stops applying — one turn to
+   launch, one to read the verdict when the shell exits, whatever `maxMinutes` you were
+   given. Do not `sleep` in the foreground waiting on it. Pattern:
    ```bash
    for _ in $(seq 1 <maxMinutes*60/pollSeconds>); do
      s=$(<status query for this provider>)

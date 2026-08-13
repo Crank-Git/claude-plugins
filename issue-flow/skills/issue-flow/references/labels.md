@@ -1,6 +1,6 @@
 # Standard label taxonomy
 
-Status labels form the state machine. An issue carries **at most one** `status:` label at a time. Create missing labels with `forge.label.create`.
+Status labels form the state machine. An issue carries **at most one** `status:` label at a time, with **no exceptions** — including a failed deploy that also needs human input, where `status:deploy-failed` stays the single label and the request for input is a comment (Stage D in [../SKILL.md](../SKILL.md), [deploy.md](deploy.md)). Every transition goes through `forge.issue.status.set`, which removes the old label and adds the new one as one operation; a bare `forge.issue.label.add` leaves the issue in two states at once and poisons every query that selects by status. Create missing labels with `forge.label.create`.
 
 ## Status (required set)
 

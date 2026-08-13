@@ -60,7 +60,7 @@ the transcript.
 
 | Author | Content | PM action |
 |---|---|---|
-| Human collaborator | answers a question you parked | Record the answer as your own comment ("applying: …"), apply it, remove `status:needs-feedback`, relabel `status:ready`, re-triage. If the issue is **in flight**, also push the answer to its worker now — see [Corrections reach work in flight](#corrections-reach-work-in-flight) |
+| Human collaborator | answers a question you parked | Record the answer as your own comment ("applying: …"), apply it, `forge.issue.status.set <n> status:ready` (one operation — it removes `status:needs-feedback`), re-triage. If the issue is **in flight**, also push the answer to its worker now — see [Corrections reach work in flight](#corrections-reach-work-in-flight) |
 | Human collaborator | new instruction / scope change on an issue | Authoritative. Update the issue, adjust plan or labels, re-triage. If it contradicts the spec, say so in the comment and ask which wins. If the issue is **in flight**, push it to the worker now rather than waiting for the gate |
 | Human reviewer | PR review or requested changes | Authoritative over any self-review. Route to a worker to address, then re-request review |
 | Human | claims an issue ("I'll take this"), or self-assigns | Drop the claim, unschedule it, treat as theirs. If a worker is already running on it, stop the worker, comment what was done, and hand over |
