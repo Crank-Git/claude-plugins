@@ -195,7 +195,9 @@ Batch complete = every member `status:batched` or terminally parked.
    integration-branch worktree) and push. **One `-m`, subject only, no body:** both
    providers match the token anywhere in the message, body included, so a body that
    *explains* the token suppresses the run just as well as one that uses it. Verify
-   before pushing — `git log -1 --format='%s%n%b' | grep -ci skip` must print `0` —
+   before pushing — `git log -1 --format='%s%n%b' | grep -ciE 'skip|no ci' || true` must
+   print `0` (the alternation covers `[no ci]`, which a bare `skip` match misses; the
+   `|| true` absorbs `grep -c`'s exit 1 on a zero count, which is the *passing* case) —
    then poll `ci-watch` to a terminal verdict. `no-run-registered` means the trigger
    did not take; it is never a pass.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
