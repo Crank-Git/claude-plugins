@@ -115,6 +115,10 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 **Every status change uses `forge.issue.status.set`, never a bare `forge.issue.label.add`.**
 An issue carries at most one `status:` label ([labels.md](../skills/issue-flow/references/labels.md)),
 so a transition is one operation with two halves — and on both CLIs it is a **single command**.
+On the Gitea MCP interface it is **two calls that must not be separated**: issue the
+`remove_label` immediately after the `add_labels`, with nothing between them, and confirm the
+issue carries exactly one `status:` label before you do anything else. The measured failure is
+the second half being dropped, and the MCP path is the one where dropping it is easy.
 Reaching for `label.add` alone is the easy mistake and it leaves the issue in two states at
 once, which silently poisons every later query that selects by status: a member sitting in
 both `status:in-review` and `status:batched` still answers the search for work awaiting

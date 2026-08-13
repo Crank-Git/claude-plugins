@@ -95,8 +95,8 @@ how the batch's knowledge outlives it.
 
 **The PM relays the urgent ones.** A worker reads the log when it starts, so the log only
 ever reaches workers that start *after* a finding lands. For anyone already running, the
-push is the only channel — and the PM decides, at the moment a `finding:` appears, whether
-a live sibling needs it now.
+push is the only channel — and the PM decides on the **targeted tracking-issue read that follows every worker completion**
+(SKILL.md, Stage A) whether a live sibling needs it now.
 
 Push it if either is true:
 
@@ -104,7 +104,7 @@ Push it if either is true:
 - It **would save a live sibling from rediscovering it** — a cost problem. Setup
   prerequisites, environment traps, a tool invocation that has to be shaped a particular
   way. These are the cheapest wins and the easiest to miss, because nothing is *wrong*
-  until the sibling wastes the same hour. Measured in a live run (Deepfield-TI epic #21):
+  until the sibling wastes the same hour. Measured in a live run (a five-member epic batch):
   one worker logged that a fresh worktree has no `node_modules` and no running Postgres;
   the sibling that was already building rediscovered the identical wall minutes later,
   because nobody pushed it.
@@ -127,7 +127,7 @@ that limits work **outside** it needs a home where that work will look:
 
 Recording it only where it was found buries it: nobody planning the other epic reads a
 sibling's closed sub-issue. This is worth stating because workers invent it on their own —
-epic #32 in the dogfooded repo carries a `Carried forward from Epic #7` note that a worker
+a later epic in the dogfooded repo carries a `Carried forward from …` note that a worker
 wrote unprompted — and a practice that useful should not depend on being reinvented.
 
 Cost: one extra issue read per worker start, one comment per genuine discovery.
