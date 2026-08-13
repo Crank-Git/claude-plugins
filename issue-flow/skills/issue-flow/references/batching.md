@@ -172,9 +172,10 @@ unchanged.
 3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
    one clean squashed commit per member on the integration branch. Head commit carries
    `[skip ci]`, so this stays CI-free.
-4. Member → `status:batched`, **removing `status:in-review` in the same swap** (at most one
-   `status:` label per issue — adding without removing leaves it in two states and breaks
-   status queries); tick the tracking checklist; `git worktree remove --force`
+4. Member → `forge.issue.status.set <m> status:batched`, which **removes `status:in-review`
+   in the same operation** (at most one `status:` label per issue — a bare
+   `forge.issue.label.add` leaves it in two states and breaks status queries); tick the
+   tracking checklist; `git worktree remove --force`
    the path from the worker's completion notification (or its verdict) and `git branch -D`
    its `worktree-agent-<id>`; launch any sequenced successor. Anything sent back
    to the worker instead goes by `SendMessage` — see
@@ -192,7 +193,14 @@ Batch complete = every member `status:batched` or terminally parked.
    `Batch #<n>: <summary>`. Body: member table + one `Closes #<m>` line per member.
 2. Trigger CI: the last commit likely carries `[skip ci]`, so push an empty commit
    without it — `git commit --allow-empty -m "ci: run full suite for batch #<n>"` (in an
-   integration-branch worktree) and push.
+   integration-branch worktree) and push. **One `-m`, subject only, no body:** both
+   providers match the token anywhere in the message, body included, so a body that
+   *explains* the token suppresses the run just as well as one that uses it. Verify
+   before pushing — `git log -1 --format='%s%n%b' | grep -ciE 'skip|no ci' || true` must
+   print `0` (the alternation covers `[no ci]`, which a bare `skip` match misses; the
+   `|| true` absorbs `grep -c`'s exit 1 on a zero count, which is the *passing* case) —
+   then poll `ci-watch` to a terminal verdict. `no-run-registered` means the trigger
+   did not take; it is never a pass.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
    cross-member integration problems (interface drift between members, duplicate
    migrations, conflicting config). Cheap — no CI involved.

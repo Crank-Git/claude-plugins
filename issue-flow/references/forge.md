@@ -202,6 +202,42 @@ other operation — never hardcode `gh`. On GitHub it is already blocking and ta
 number the worker already has; on Gitea it resolves to the loop below. Keep either in a
 subagent so log volume never reaches the PM.
 
+**Launch that call with `run_in_background: true`.** One blocking call is the right shape,
+but a *foreground* one cannot outlast the harness's `Bash` ceiling: **120000 ms by default,
+600000 ms maximum** (`BASH_DEFAULT_TIMEOUT_MS` / `BASH_MAX_TIMEOUT_MS`). Ten minutes is the
+hard limit unless the operator raised it, and two is what an agent gets if it does not pass
+`timeout` explicitly. CI runs routinely exceed both. When the call is killed the verdict is
+**lost, not delayed** — the agent sees a timeout error instead of `success` / `failure` and
+has to start the wait over, which is how a watch that never resolves becomes a merge on an
+unread check.
+
+A background shell keeps running across turns and re-invokes the agent when it exits, so
+the ceiling stops applying and the cost is **one turn to launch, one to read the verdict,
+regardless of how long CI takes**. That is strictly better than the foreground call on both
+axes. Both waiting paths — this one and the deploy-watcher's poll
+([../skills/issue-flow/references/deploy.md](../skills/issue-flow/references/deploy.md)) —
+use it, and they use it the same way:
+
+1. Launch the watch (the `gh pr checks <pr> --watch` call, or the commit-anchored loop
+   below) with `run_in_background: true`. Do not pass a `timeout`; do not `sleep` in the
+   foreground waiting on it. The tool result carries the **path to the shell's output
+   file** — keep it; that file is where the verdict lands.
+2. **Stay alive until that shell exits.** Do other in-scope work if you have any;
+   otherwise simply wait for the completion notification, which carries the same output
+   path.
+3. Read the output file, take the one-line verdict, and only then act on it or return it.
+
+**Do not return before the shell exits.** Both waiting paths run inside subagents, and a
+subagent's final text *is* its return — emitting it ends the agent, and an agent that has
+ended is never re-invoked when its background shell finishes. The verdict is then lost in
+exactly the way a killed foreground call loses it, so backgrounding buys nothing. Emit no
+verdict, no partial verdict and no "watching…" progress note until you have read the
+finished shell's output. A watch you launched and walked away from is not a watch.
+
+The loop's own `sleep` interval and iteration count are unchanged — they bound the *watch*,
+not the tool call, and `maxMinutes` may now exceed ten because nothing kills it at ten.
+A verdict that never arrives is still not a pass: an elapsed budget returns `timed-out`.
+
 **Do not build the Gitea watch on `tea actions runs list`.** Two measured reasons:
 
 - **It is not the API object.** `tea` renders that command as a flattened *table*, so the
@@ -293,9 +329,11 @@ authenticate with a credential helper.
 
 The same rule holds on GitHub: `gh pr checks <pr> --watch` already blocks in one call.
 Never wrap `forge.pr.checks` or `forge.run.list` in an agent-driven retry loop on either
-forge. **`gh pr checks` exits non-zero when checks fail (and `8` when they are still
+forge — and launch the blocking call in the background on either forge, for the ceiling
+reason above. **`gh pr checks` exits non-zero when checks fail (and `8` when they are still
 pending).** That surfaces as a failed `Bash` call — treat the non-zero exit as the
-result, not as a tool error to retry.
+result, not as a tool error to retry. A background shell reports the same exit status when
+it finishes, so the meaning of the code does not change with the launch mode.
 
 **`[skip ci]` is native on both.** Gitea Actions honors `[skip ci]`, `[ci skip]`,
 `[no ci]`, `[skip actions]` and `[actions skip]` in the head commit message from 1.20
