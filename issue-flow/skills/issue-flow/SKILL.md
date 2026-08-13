@@ -296,7 +296,11 @@ points only:** on skill load, before a merge gate, and when the ready pool empti
 routine worker completion does **not** earn a full sweep — full triage is a list plus a
 read of every untriaged item at PM context size, and paying that on every completion is
 one of the largest avoidable costs in the loop. On a routine completion do a **targeted
-single-issue read** of just the issue that finished. New issues or comments you learn
+single-issue read** of just the issue that finished — plus, when other members of its batch are
+still live, that batch tracking issue's comments since you last read it. That second read is
+what makes the `finding:` relay real: findings land on the tracking issue, and without it
+nothing brings a new one into PM context while the siblings it was written for are still
+running ([batching.md](references/batching.md)). New issues or comments you learn
 about out of band (epic sub-issues you generated, hotfix issues from a failed deploy,
 anything filed by a human or a worker while you were busy) are picked up by the next
 scheduled sweep. Between events, idle but available.
@@ -325,10 +329,20 @@ read what they did since `LAST_SWEEP`. Full playbook —
 3b. **Repair split status.** Any issue carrying **more than one** `status:` label is in an
    impossible state and every status query it answers is wrong from here on. Find them in the
    same pass — the issue list you already fetched carries labels, so this costs no extra call
-   — and repair each to the **furthest-along** label alone
-   (`ready < in-progress < in-review < batched < deploying`; `blocked`, `needs-feedback` and
-   `awaiting-review` win over all of them, since they are parks and the park is the live
-   state). Then carry on; do not investigate, do not comment. This is a **repair, not a
+   — and repair each to the **furthest-along** label alone, on this single order:
+   `ready < in-progress < needs-feedback < blocked < in-review < awaiting-review < batched <
+   deploying < deploy-failed`. Parks (`needs-feedback`, `blocked`, `awaiting-review`) beat the
+   working labels that precede them, because a park is the live state. They do **not** beat
+   `batched`, `deploying` or `deploy-failed`: those three are facts about a PR that already
+   merged or a deploy that already ran, and a fact outranks an intent. Keeping the park would
+   un-batch a member whose PR is merged, and the batch gate (Stage C2) would then never fire —
+   it waits for every member to be `status:batched` or terminally parked. `deploy-failed` is
+   last for the same reason: Stage D sets it in place of `deploying`, and repairing back to
+   `deploying` erases the signal hotfix routing reads. Then carry on; do not investigate — but
+   **do** post one terse comment on the repaired issue
+   (`status repair: removed status:<x>, kept status:<y>`). Invariant 6 admits no silent label
+   mutation, it is how the operator whose issue you relabeled finds out, and Phase 0
+   reconstructs an interrupted run from exactly these comments. This is a **repair, not a
    diagnosis** — it exists because the C1 gate has been measured leaving `in-review` behind
    when it adds `batched`, across three separate runs, while reporting in its own comment that
    the issue is `status:batched`. A gate that believes it did the swap cannot catch itself, so
@@ -400,7 +414,7 @@ every single verdict buys nothing and costs a full-context pass each time.
    - **Locate (read-only, parallel):** fan out `Agent` calls (Explore / cavecrew-investigator) to map the files/call-sites the issue touches; take back a short summary. **Tell every locate agent the batch's base branch and require it to read that ref**, not the default branch: for an epic batch, earlier members are already sub-merged into the integration branch and exist *nowhere else*. An agent that greps `main` will truthfully report a helper "does not exist anywhere" when a sibling built it an hour ago, and the worker then rebuilds it. **`git fetch` before you locate**, and have the agents read the fetched remote ref rather than whatever the working tree happens to be on — naming the right branch is not enough if the checkout behind it is stale. Both failures were measured in live runs: one locate pass read `origin/main` and missed a UUIDv5 helper a merged sibling had added, which would have produced a second id scheme against a unique column; a later one read a working tree that was a single merge behind `origin/main` and reported its issue's whole premise as fiction. The symptom is identical either way — a truthful "this does not exist anywhere" about code that does — so treat any such report from a locate pass as suspect until the ref it read is confirmed current.
    - **If the issue calls an external service, confirm the interface before you plan it.** Delegate a read of the vendor's current documentation (or the CLI's own `help`) and put the doc URL + pinned version in the plan. Never plan against a remembered API shape — see [references/external-apis.md](../../references/external-apis.md). Cannot confirm it → `status:needs-feedback`, not a guess.
    - Comment a short plan on the issue (approach, files, out-of-scope).
-   - **Claim with compare-and-set:** immediately before swapping labels, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else remove `status:ready`, add `status:in-progress`, `forge.issue.assign` (assignee = lock; on Gitea resolve your login with `forge.user.login` first — `tea` has no `@me`).
+   - **Claim with compare-and-set:** immediately before claiming, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else `forge.issue.assign`, then `forge.issue.status.set <n> status:in-progress`. **On a multi-member batch, assign every member here but hold the status swap** until each one actually launches (step 5) — step 4 forbids `status:in-progress` before the cross-check comment exists, and the assignee is what holds the claim in the meantime (assignee = lock; on Gitea resolve your login with `forge.user.login` first — `tea` has no `@me`).
    - If planning surfaces a user-only decision, don't guess: comment the question, label `status:needs-feedback`, drop the claim, pick different work.
 4. **Cross-check the batch's plans — a gate, before the batch's first launch.**
 
@@ -417,12 +431,18 @@ every single verdict buys nothing and costs a full-context pass each time.
    That is exactly when the step evaporates — there are no pairs to act on, so there is
    nothing that forces you to show your work. Post the negative.
 
-   Order: plan **every** member the batch will start (step 3 for each of them), then run this
+   Order: plan **every** member of the batch (step 3 for each of them), then run this
    check, then launch any of them (step 5). **No member goes `status:in-progress` before that
-   comment is on the tracking issue.** Skip the step only when the batch will start exactly
-   one member, or for standalone/hotfix work.
+   comment is on the tracking issue.** Skip the step only when the batch has exactly **one
+   member**, or for standalone/hotfix work. A batch with more than one member gets the check
+   before its **first** launch even when `concurrency` is 1 or the members are sequenced —
+   serializing the launches does not remove a plan collision, it only delays discovering it,
+   and the worker blocks on a missing `crossCheck` regardless of how many siblings happen to be
+   running beside it. **A member added to the batch after the check** gets an addendum comparing
+   it against the members still live, and none if they have all sub-merged — the `crossCheck`
+   URL you hand it must be a comparison that included it.
 
-   Getting the order wrong wastes the check. Measured in a live run (Deepfield-TI epic #21):
+   Getting the order wrong wastes the check. Measured in a live run (a five-member epic batch):
    plan→claim→launch ran per issue, so one member was already building when the check found
    that its issue text was wrong about which fields are mergeable. The finding was correct and
    arrived too late to shape the work — it became a correction to push instead of a plan to
@@ -473,18 +493,25 @@ every single verdict buys nothing and costs a full-context pass each time.
 Triggered by a worker's completion notification. Act on its `outcome`:
 
 - **`needs-feedback`** → label `status:needs-feedback`, post the worker's `question` as an issue comment, park per the feedback policy. Free the slot → Stage A/B.
-- **`blocked`** → label `status:blocked`, comment naming the `blocker`. Free the slot.
-- **`checkpoint`** → the worker hit its turn budget with work pushed and nothing wrong. **Re-spawn a fresh worker** (do *not* `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and the verdict's `remaining` text appended to the plan. **Do not touch the status label** — leave it exactly as the checkpointed worker left it: `status:in-review` if it had already opened the PR (runbook step 2), `status:in-progress` if it checkpointed during implementation before that. Either is correct, the replacement adopts whatever PR exists rather than re-opening one, and flipping the label buys nothing but thrash. **Post one terse comment** — `checkpoint <k>: <one-line remaining>, replacement spawned` — which is what invariant 6 requires of any state change, what the chain cap below counts, and what Phase 0 reconstructs an interrupted run from. No gate, no digest line, and **do not free the slot** — the issue is still in flight and its replacement occupies the same one. This is routine flow control, not an exception — a long issue is *expected* to take two or three workers. **Remove the checkpointed worker's worktree** (`git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>`, as in step 5 below) — the replacement gets a fresh one from the harness and re-checks-out the published branch, so keeping the old tree only leaks it. The commits are safe on the remote; that is what makes the handoff free. **Cap the chain: after 3 consecutive checkpoints on one issue**, stop re-spawning — a worker that checkpoints without visible progress recycles forever and pays a fresh context ramp each time. Label `status:needs-feedback` (or `status:blocked` if the last `remaining` names a hard blocker), comment with the chain of `remaining` notes, free the slot, and park it per the feedback policy. Count the chain from those checkpoint comments, and reset it whenever a checkpoint's PR shows new commits.
+- **`blocked`** → **first, is this your own bookkeeping?** If the `blocker` names a missing,
+  empty or unresolvable `crossCheck`, the issue is not blocked — you are. Post (or repair) the
+  step-4 cross-check comment, then re-spawn the worker with the URL filled in, and do **not**
+  label `status:blocked`: Stage A skips that label, so parking here would strand a perfectly
+  workable issue on your own omission. Otherwise label `status:blocked`, comment naming the
+  `blocker`. Free the slot.
+- **`checkpoint`** → the worker hit its turn budget with work pushed and nothing wrong. **Re-spawn a fresh worker** (do *not* `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and the verdict's `remaining` text appended to the plan. **Do not touch the status label** — leave it exactly as the checkpointed worker left it: `status:in-review` if it had already opened the PR (runbook step 2), `status:in-progress` if it checkpointed during implementation before that. Either is correct, the replacement adopts whatever PR exists rather than re-opening one, and flipping the label buys nothing but thrash. **Post one terse comment** — `checkpoint <k>: <one-line remaining>, replacement spawned` — which is what invariant 6 requires of any state change, what the chain cap below counts, and what Phase 0 reconstructs an interrupted run from. No gate, no digest line, and **do not free the slot** — the issue is still in flight and its replacement occupies the same one. This is routine flow control, not an exception — a long issue is *expected* to take two or three workers. **Remove the checkpointed worker's worktree** (`git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>`, as in step 6 below) — the replacement gets a fresh one from the harness and re-checks-out the published branch, so keeping the old tree only leaks it. The commits are safe on the remote; that is what makes the handoff free. **Cap the chain: after 3 consecutive checkpoints on one issue**, stop re-spawning — a worker that checkpoints without visible progress recycles forever and pays a fresh context ramp each time. Label `status:needs-feedback` (or `status:blocked` if the last `remaining` names a hard blocker), comment with the chain of `remaining` notes, free the slot, and park it per the feedback policy. Count the chain from those checkpoint comments, and reset it whenever a checkpoint's PR shows new commits.
 - **`ready-to-merge`** → sub-merge below (never on the worker's word alone):
   1. Verify: all PR threads resolved, PR targets the **integration branch**, worker reported the **local checks green** (`localChecks` in its verdict), and the session's `practices` were met (tests-first evidence, E2E where required, coverage threshold, commit style, docs — see [session-config.md](references/session-config.md)). A practice missed without a stated reason goes back to the worker; it is not waived at the gate. No provider CI to wait for.
   1b. **Acceptance criteria gate.** The worker returns `criteria: [{text, met, evidence}]` — one entry per acceptance criterion in the issue body. Check the list is **complete** (every criterion in the issue appears) and that each `met: true` carries real evidence (a test name, a command output, a file:line). Any criterion `met: false`, missing, or evidenced only by "implemented" goes **back to the worker** with the specific criterion quoted; a criterion the worker argues is wrong or unbuildable is a product question → `status:needs-feedback`, not a waiver. Acceptance criteria are the definition of done that `spec-to-issues` wrote down — this is where they are enforced, not months later in `project-review`.
   2. **Conflict vs the integration branch** (a sibling just sub-merged): mechanical → resolve directly or via a short-lived worker; **semantic** (two intents on the same logic) → `status:needs-feedback` on both issues, park, do not guess.
-  3. **Authority gate.** If `prAuthority` is `review-all` or `propose-only`, do **not** merge: ready the PR, request review, label the issue `status:awaiting-review`, notify once, and go schedule other work. Merge only after a human approving review lands (a reaction or a vague "looks good" is not one). Under `autonomous`/`batch-review`, sub-merges are yours.
+  3. **Authority gate.** If `prAuthority` is `review-all` or `propose-only`, do **not** merge: ready the PR, request review, `forge.issue.status.set <member> status:awaiting-review` (removes `status:in-review` — a bare label add here leaves the same split status step 5 exists to prevent), notify once, and go schedule other work. Merge only after a human approving review lands (a reaction or a vague "looks good" is not one). Under `autonomous`/`batch-review`, sub-merges are yours.
   4. Sweep for new comments on the PR (Stage A0) — a "hold this" posted a minute ago outranks your gate — then merge the sub-PR: `forge.pr.ready` then `forge.pr.merge.squash` (on Gitea, follow with `forge.branch.delete` — `tea pr merge` does not remove the branch) (head commit already carries `[skip ci]`, so readying/merging stays CI-free).
-  5. **One call, nothing else in this step:**
-     `forge.issue.status.set <member> status:batched` (removes `status:in-review`, adds
-     `status:batched` — see [forge.md](../../references/forge.md)). Do this **before** the
-     bookkeeping in step 6, not folded into it.
+  5. **One transition, nothing else in this step** (one command on `gh`/`tea`; two back-to-back
+     calls on the Gitea MCP interface, then verify — see [forge.md](../../references/forge.md)):
+     `forge.issue.status.set <member> status:batched` — adds `status:batched` and removes
+     **whichever single `status:` label the issue is actually carrying**: `status:in-review`
+     normally, `status:awaiting-review` when it came through the authority gate at step 3. Do
+     this **before** the bookkeeping in step 6, not folded into it.
 
      This step is deliberately alone because folding it in is measured to fail. Across three
      live runs, **every** `→ status:batched` transition added without removing, while the
