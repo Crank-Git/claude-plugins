@@ -35,6 +35,12 @@ base:         <remote>/epic/<n>-<slug>   (the integration branch; <remote>/<dev>
 ci:           skip | run               (skip = batch member: draft PR, [skip ci] commits, local checks.
                                         run = standalone/hotfix: normal PR, watch provider CI)
 batch:        epic #<n> | batch #<n> | standalone
+crossCheck:   <URL of the batch cross-check comment on the tracking issue>
+              (required whenever `batch` names an epic/batch with other members;
+               `n/a` only for standalone/hotfix. The worker validates this as its
+               first action and returns `blocked` without doing any work if it is
+               absent, empty, "pending", or unresolvable — see SKILL.md Stage B
+               step 5.)
 remote:       <remote>
 forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
               repo, interface}. The worker uses it to pick gh or tea. Never omit it; a worker
@@ -50,6 +56,11 @@ practices:    tdd: true|false            (tests land with or before the implemen
 steRule:      <path to the writing standard: .claude/rules/ste.md when the project has one
                (the planner writes it), else this plugin's references/ste.md>
 ```
+
+`crossCheck` is not optional on a multi-member batch: it is the field that makes the step-4
+gate un-skippable, because you cannot fill it in before the comment exists. A worker that
+receives no `crossCheck` line cannot tell "the check was skipped" from "the PM forgot the
+field", so it treats both as `blocked`.
 
 `steRule` is not optional decoration: the worker writes **code comments, docstrings, test
 names, and its PR body** to that standard, using the spec's `## Terms` vocabulary. Pass
@@ -85,9 +96,10 @@ equivalent:
 - **Fallback — re-spawn**, when the worker is gone (session restarted, or it is no longer
   addressable). A re-spawn is a **new agent in a new empty worktree on the default
   branch**, so the brief must carry `base: <remote>/issue/<number>-<slug>` — the published
-  branch — plus the plan, the PR number, and what the gate rejected. Passing the
-  integration branch as `base` here would reset the issue branch and orphan the PR's
-  commits.
+  branch — plus the plan, the PR number, what the gate rejected, and **the same `crossCheck`
+  URL the original brief carried**: a re-spawn runs the First action exactly like a fresh
+  launch and returns `blocked` without it. Passing the integration branch as `base` here
+  would reset the issue branch and orphan the PR's commits.
 
 Either way the PM tears the worktree down only once the issue is `status:batched` or
 terminally parked — not between rework rounds.
@@ -123,7 +135,7 @@ The worker returns exactly this object as its final message:
 
 | outcome | PM action (the gate) |
 |---|---|
-| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker via `SendMessage`, see Rework; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash`; label `status:batched`, tick the tracking checklist, remove the worktree it reported (`git worktree remove --force <worktree>`; `git worktree prune`), launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: merge to dev, Stage D directly. |
+| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker via `SendMessage`, see Rework; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash`; **`forge.issue.status.set <member> status:batched` as its own step, before any bookkeeping** (SKILL.md C1 step 5 — never a bare label add); then tick the tracking checklist, remove the worktree it reported (`git worktree remove --force <worktree>`; `git worktree prune`), launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: merge to dev, Stage D directly. |
 | `checkpoint` | The worker hit its turn budget with work pushed; nothing is wrong. Re-spawn a **fresh** worker (not `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and `remaining` appended to the plan. Remove the checkpointed worktree (`git worktree remove --force <worktree>`; `git branch -D worktree-agent-<id>`) — the replacement gets a fresh one and re-checks-out the published branch. **Leave the status label untouched** — `status:in-review` if the worker had opened its PR, `status:in-progress` if it checkpointed before that; both are correct and the replacement adopts whatever PR exists. Post one terse comment recording the checkpoint (the chain cap counts these). **Does not free the slot** — the issue is still in flight. No gate, no digest line. |
 | `needs-feedback` | Label `status:needs-feedback`, post `question` as an issue comment, park per the feedback policy (notify; ask interactively only when it gates work). Free the slot. |
 | `blocked` | Label `status:blocked`, comment naming `blocker`. Free the slot. |

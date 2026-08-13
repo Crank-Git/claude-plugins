@@ -106,10 +106,24 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 | `forge.issue.create` | `gh issue create --title "<t>" --body "<b>" --label "<l>"` | `tea issues create --title "<t>" --description "<b>" --labels "<l>"` | `issue_write(method: "create")` |
 | `forge.issue.label.add` | `gh issue edit <n> --add-label "<l>"` | `tea issues edit <n> --add-labels "<l>"` | `issue_write(method: "add_labels")` — **IDs** |
 | `forge.issue.label.remove` | `gh issue edit <n> --remove-label "<l>"` | `tea issues edit <n> --remove-labels "<l>"` | `issue_write(method: "remove_label")` — **ID** |
+| `forge.issue.status.set` | `gh issue edit <n> --add-label "<new>" --remove-label "<old>"` | `tea issues edit <n> --add-labels "<new>" --remove-labels "<old>"` | `issue_write(method: "add_labels")` **then** `issue_write(method: "remove_label")` |
 | `forge.issue.assign` | `gh issue edit <n> --add-assignee @me` | `tea issues edit <n> --set-assignees <me>` | `issue_write(method: "update", assignees)` |
 | `forge.issue.comment` | `gh issue comment <n> --body "<b>"` | `tea comments <n> "<b>"` | `issue_write(method: "add_comment")` |
 | `forge.issue.edit.body` | `gh issue edit <n> --body "<b>"` | `tea issues edit <n> --description "<b>"` | `issue_write(method: "update", body)` |
 | `forge.issue.close` | `gh issue close <n>` | `tea issues close <n>` | `issue_write(method: "update", state: "closed")` |
+
+**Every status change uses `forge.issue.status.set`, never a bare `forge.issue.label.add`.**
+An issue carries at most one `status:` label ([labels.md](../skills/issue-flow/references/labels.md)),
+so a transition is one operation with two halves — and on both CLIs it is a **single command**.
+On the Gitea MCP interface it is **two calls that must not be separated**: issue the
+`remove_label` immediately after the `add_labels`, with nothing between them, and confirm the
+issue carries exactly one `status:` label before you do anything else. The measured failure is
+the second half being dropped, and the MCP path is the one where dropping it is easy.
+Reaching for `label.add` alone is the easy mistake and it leaves the issue in two states at
+once, which silently poisons every later query that selects by status: a member sitting in
+both `status:in-review` and `status:batched` still answers the search for work awaiting
+review, forever. Measured twice in live runs, on every member of two separate batches.
+Whenever you add a `status:` label, name the one you are removing in the same call.
 
 **`forge.issue.view` reads one issue, not the whole tracker.** `tea api
 /repos/{owner}/{repo}/issues/<n>` returns one issue, and its cost does not grow with

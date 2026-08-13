@@ -118,6 +118,22 @@ Each reviewer returns structured findings; the main thread dedupes, posts them a
 comments, and fixes the real ones. A reviewer that wants a product decision returns
 `needsFeedback` rather than inventing intent.
 
+**Check what the diff does not contain before you trust a clean review.** A reviewer can
+only see what you hand it, and a diff silently omits things: a file git classifies as
+**binary** appears as `+0/-0` with a byte-size change and no content at all, so a lens over
+that diff reports nothing and reads as a pass. Measured in a live run — a test file
+carrying NUL bytes as a deliberate key separator was binary to git, and six added tests
+were invisible to every reviewer and to the sub-merge gate. Generated files, lockfiles and
+anything above the host's diff-size cap fail the same way.
+
+So: compare the PR's **file list** against what the diff actually shows. Any file with a
+size change but no visible content is **unreviewed, not clean** — review it by reading both
+versions directly, and say in the review which files were handled that way. This is the
+same failure the loop meets elsewhere in other clothes: a self-skipping test suite exits 0,
+a CI job that never started reports a check, a binary file shows an empty diff. **Absence of
+signal is not a pass.** Wherever a gate reports green, confirm the thing it was gating
+actually ran or was actually read.
+
 ### Example Workflow script (self-review fan-out)
 
 The main thread can lift this and pass it to the `Workflow` tool. It is decision-free:
