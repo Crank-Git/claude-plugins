@@ -412,7 +412,12 @@ costs one turn and is always the cheaper error.
      one. **Never run it in the foreground either**: the `Bash` ceiling is 600000 ms
      (default 120000), a 20-minute run exceeds it, and a killed call loses the verdict
      instead of delaying it. Backgrounded, the wait costs one turn to launch and one to
-     read the verdict no matter how long CI takes. On GitHub it blocks natively and
+     read the verdict no matter how long CI takes — **but only if you are still alive to
+     read it.** Keep the output-file path the launch returns, and do not emit your verdict
+     JSON until the shell has exited and you have read that file: your final text ends you,
+     and an ended worker is never re-invoked when its watch finishes. Waiting on CI is a
+     legitimate place to sit idle; returning `checkpoint` or a guessed outcome instead is
+     not. On GitHub it blocks natively and
      **exits non-zero when checks fail** (`8` while
      still pending): that non-zero exit is the result, not a tool error to retry. On Gitea
      it resolves to the commit-anchored shell loop in

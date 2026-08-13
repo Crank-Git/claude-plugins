@@ -220,9 +220,19 @@ use it, and they use it the same way:
 
 1. Launch the watch (the `gh pr checks <pr> --watch` call, or the commit-anchored loop
    below) with `run_in_background: true`. Do not pass a `timeout`; do not `sleep` in the
-   foreground waiting on it.
-2. Do other work, or return. The harness re-invokes when the shell exits.
-3. Read the one-line verdict from the finished shell's output and act on it.
+   foreground waiting on it. The tool result carries the **path to the shell's output
+   file** — keep it; that file is where the verdict lands.
+2. **Stay alive until that shell exits.** Do other in-scope work if you have any;
+   otherwise simply wait for the completion notification, which carries the same output
+   path.
+3. Read the output file, take the one-line verdict, and only then act on it or return it.
+
+**Do not return before the shell exits.** Both waiting paths run inside subagents, and a
+subagent's final text *is* its return — emitting it ends the agent, and an agent that has
+ended is never re-invoked when its background shell finishes. The verdict is then lost in
+exactly the way a killed foreground call loses it, so backgrounding buys nothing. Emit no
+verdict, no partial verdict and no "watching…" progress note until you have read the
+finished shell's output. A watch you launched and walked away from is not a watch.
 
 The loop's own `sleep` interval and iteration count are unchanged — they bound the *watch*,
 not the tool call, and `maxMinutes` may now exceed ten because nothing kills it at ten.

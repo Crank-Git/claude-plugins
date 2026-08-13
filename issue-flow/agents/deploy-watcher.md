@@ -81,7 +81,17 @@ resolves to the right CLI from the `forge` block.
    the `Bash` ceiling is 600000 ms (default 120000), and a killed call loses the verdict
    rather than delaying it. Background it and the ceiling stops applying — one turn to
    launch, one to read the verdict when the shell exits, whatever `maxMinutes` you were
-   given. Do not `sleep` in the foreground waiting on it. Pattern:
+   given. Do not `sleep` in the foreground waiting on it.
+
+   **Then stay alive until it exits.** Keep the output-file path the launch returns. You
+   have no other work — waiting *is* your job — so wait for the completion notification,
+   read that file, and return the verdict you find in it. **Your final text ends you:** emit
+   anything before the shell exits and you are gone when it finishes, so nobody ever reads
+   the verdict — the same lost result the foreground call produced, reached a different way.
+   And do not report `timed-out` because you have not heard yet: `timed-out` is a word the
+   loop itself prints after `maxMinutes`, never a guess you make while it is still running.
+
+   Pattern:
    ```bash
    for _ in $(seq 1 <maxMinutes*60/pollSeconds>); do
      s=$(<status query for this provider>)

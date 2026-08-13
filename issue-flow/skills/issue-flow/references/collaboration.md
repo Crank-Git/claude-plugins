@@ -133,8 +133,8 @@ detector across operators:
 
 1. Re-read labels **and** assignees immediately before swapping labels.
 2. Assigned to anyone other than `<me>` → abandon, pick the next issue.
-3. Otherwise remove `status:ready`, add `status:in-progress`,
-   `forge.issue.assign`, then **re-read once more**. If someone else's
+3. Otherwise `forge.issue.status.set <n> status:in-progress` (one operation — it removes
+   `status:ready`), `forge.issue.assign`, then **re-read once more**. If someone else's
    assignee also landed, the earlier `createdAt` on the claim comment wins — yours
    loses, so unassign and move on.
 4. Every claim leaves a comment naming the session, so a human can see who has what.

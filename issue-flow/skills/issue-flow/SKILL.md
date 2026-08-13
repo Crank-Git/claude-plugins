@@ -331,7 +331,10 @@ read what they did since `LAST_SWEEP`. Full playbook —
    same pass — the issue list you already fetched carries labels, so this costs no extra call
    — and repair each to the **furthest-along** label alone, on this single order:
    `ready < in-progress < in-review < awaiting-review < needs-feedback < blocked < batched <
-   deploying < deploy-failed`. The two parks (`needs-feedback`, `blocked`) beat **every** working
+   deploying < deploy-failed`. The two **question-holding** parks (`needs-feedback`,
+   `blocked` — `status:awaiting-review` also stops the loop at Stage E, but it waits on a
+   review already requested rather than on a question nobody has asked, so it ranks with the
+   working labels here) beat **every** working
    label that precedes them — `in-review` included, which is the state a park is most often
    applied from — because a park is the live state and carries a question that has to be asked.
    Ordering `in-review` above them loses that question: the issue then reads as actively in
@@ -567,7 +570,8 @@ parked work is entangled. That call is the PM's.
 4. **Conflict vs dev** (another batch landed first): resolve once, at this level — mechanical directly, semantic → park per policy.
 4b. **Authority gate.** Under the default `batch-review` (and under `review-all` /
    `propose-only`), the batch PR needs a **human approving review** before it merges:
-   request review, label the tracking issue `status:awaiting-review`, notify once, and go
+   request review, `forge.issue.status.set <tracking> status:awaiting-review` (removes
+   whichever single `status:` label the tracking issue is carrying), notify once, and go
    do other work — never block on it. Requested changes → fix worker → re-request review.
    Only `autonomous` lets you merge a batch PR yourself. Branch protection always wins
    over this setting; never route around it and never admin-merge. Sweep for comments

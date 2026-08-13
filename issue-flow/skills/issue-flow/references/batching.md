@@ -172,9 +172,10 @@ unchanged.
 3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
    one clean squashed commit per member on the integration branch. Head commit carries
    `[skip ci]`, so this stays CI-free.
-4. Member → `status:batched`, **removing `status:in-review` in the same swap** (at most one
-   `status:` label per issue — adding without removing leaves it in two states and breaks
-   status queries); tick the tracking checklist; `git worktree remove --force`
+4. Member → `forge.issue.status.set <m> status:batched`, which **removes `status:in-review`
+   in the same operation** (at most one `status:` label per issue — a bare
+   `forge.issue.label.add` leaves it in two states and breaks status queries); tick the
+   tracking checklist; `git worktree remove --force`
    the path from the worker's completion notification (or its verdict) and `git branch -D`
    its `worktree-agent-<id>`; launch any sequenced successor. Anything sent back
    to the worker instead goes by `SendMessage` — see
