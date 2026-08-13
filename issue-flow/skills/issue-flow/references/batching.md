@@ -192,7 +192,12 @@ Batch complete = every member `status:batched` or terminally parked.
    `Batch #<n>: <summary>`. Body: member table + one `Closes #<m>` line per member.
 2. Trigger CI: the last commit likely carries `[skip ci]`, so push an empty commit
    without it — `git commit --allow-empty -m "ci: run full suite for batch #<n>"` (in an
-   integration-branch worktree) and push.
+   integration-branch worktree) and push. **One `-m`, subject only, no body:** both
+   providers match the token anywhere in the message, body included, so a body that
+   *explains* the token suppresses the run just as well as one that uses it. Verify
+   before pushing — `git log -1 --format='%s%n%b' | grep -ci skip` must print `0` —
+   then poll `ci-watch` to a terminal verdict. `no-run-registered` means the trigger
+   did not take; it is never a pass.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
    cross-member integration problems (interface drift between members, duplicate
    migrations, conflicting config). Cheap — no CI involved.
