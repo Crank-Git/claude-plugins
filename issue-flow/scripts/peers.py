@@ -26,10 +26,15 @@ send the shutdown, then run this again to confirm the roster shrank. Only the
 **A roster entry is not proof of life.** Team directories outlive the sessions
 that made them: this machine had 72 entries from a session five days dead, and a
 named grandchild was still listed half an hour after its parent exited while
-`ListAgents` showed nothing. So teams whose config has not been touched for
-`--stale-hours` (24 by default) are counted, not listed — they are cleanup, not
-work in flight. Use `--all` to see them, and delete a stale team by removing its
-directory.
+`ListAgents` showed nothing.
+
+So a team is judged by **its owning session**, not by the roster's own age: the
+team directory is named for the session id, and a live session rewrites its
+transcript constantly. A team whose session has been silent for `--stale-hours`
+(24 by default) is counted, not listed. Deliberately not roster age — a PM that
+has waited a day and a half on one silent helper is exactly the case this tool
+exists for, and that team stays listed as long as the session it belongs to is
+alive. `--all` lists the stale ones too; delete one by removing its directory.
 """
 
 import argparse
@@ -39,6 +44,7 @@ import sys
 import time
 
 DEFAULT_TEAMS_DIR = os.path.expanduser("~/.claude/teams")
+DEFAULT_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
 
 def read_team(directory):
@@ -72,25 +78,67 @@ def read_team(directory):
 
 
 def count_mail(path):
-    """Messages sitting in an inbox the peer has not drained yet."""
+    """Messages sitting in an inbox that the peer has not read yet.
+
+    Records carry an explicit `"read"` flag and stay in the file after delivery,
+    so counting records would report mail as undelivered forever and invite the
+    PM to re-send what already arrived.
+    """
     try:
         with open(path) as handle:
             data = json.load(handle)
     except (FileNotFoundError, json.JSONDecodeError):
         return 0
-    if isinstance(data, list):
-        return len(data)
     if isinstance(data, dict):
-        return len(data.get("messages", []))
-    return 0
+        data = data.get("messages", [])
+    if not isinstance(data, list):
+        return 0
+    return sum(
+        1 for message in data if not (isinstance(message, dict) and message.get("read"))
+    )
 
 
-def collect(teams_dir, stale_hours=None, now=None):
+def session_last_active(session, projects_dir):
+    """Newest mtime of the owning session's transcript, or None if not found.
+
+    A team directory is named `session-<first 8 of the session id>` and the
+    transcript is `<session id>.jsonl` under the project directory, so the team
+    can be matched to the session that owns it. This is the liveness signal:
+    a live session rewrites its transcript constantly, while the roster is
+    written once at join and says nothing about whether anyone is still there.
+    """
+    prefix = session[len("session-"):] if session.startswith("session-") else session
+    # The harness names a team for the first 8 characters of the session id.
+    # Matching on anything shorter would collide with unrelated sessions and
+    # borrow their liveness, so treat a short prefix as "cannot tell".
+    if len(prefix) < 8 or not os.path.isdir(projects_dir):
+        return None
+    newest = None
+    for project in os.listdir(projects_dir):
+        directory = os.path.join(projects_dir, project)
+        try:
+            entries = os.listdir(directory)
+        except OSError:
+            continue
+        for entry in entries:
+            if not (entry.startswith(prefix) and entry.endswith(".jsonl")):
+                continue
+            try:
+                touched = os.path.getmtime(os.path.join(directory, entry))
+            except OSError:
+                continue
+            newest = touched if newest is None else max(newest, touched)
+    return newest
+
+
+def collect(teams_dir, stale_hours=None, now=None, projects_dir=DEFAULT_PROJECTS_DIR):
     """Return teams that have peers. With stale_hours, split live from stale.
 
-    Staleness is the config file's mtime, because nothing else distinguishes the
-    two: an in-process peer leaves no OS process to look for, and the roster is
-    written once at join.
+    "Stale" means the session that owns the roster is gone, judged by how long
+    ago it last wrote its transcript — not by the roster's own age. A PM that has
+    been waiting a day and a half on one silent helper is exactly who this tool is
+    for, and filtering on roster age would hide that team as if it were litter.
+    The roster mtime is the fallback when no transcript can be matched.
     """
     teams, stale = [], []
     if not os.path.isdir(teams_dir):
@@ -102,10 +150,12 @@ def collect(teams_dir, stale_hours=None, now=None):
         if not team or not team["members"]:
             continue
         if stale_hours is not None:
-            try:
-                touched = os.path.getmtime(os.path.join(directory, "config.json"))
-            except OSError:
-                touched = 0
+            touched = session_last_active(team["session"], projects_dir)
+            if touched is None:
+                try:
+                    touched = os.path.getmtime(os.path.join(directory, "config.json"))
+                except OSError:
+                    touched = 0
             if now - touched > stale_hours * 3600:
                 team["path"] = directory
                 stale.append(team)
@@ -187,10 +237,11 @@ def main():
 
     now = time.time()
     live, stale = collect(args.teams_dir, stale_hours=args.stale_hours, now=now)
-    if args.all:
-        live, stale = live + stale, []
     if args.json:
         print(json.dumps({"live": live, "stale": stale}, indent=2))
+    elif args.all:
+        # Listed together, but `live` still means live — see --exit-code below.
+        print("\n".join(render(live + stale, now, [])))
     else:
         print("\n".join(render(live, now, stale)))
     if args.exit_code and live:

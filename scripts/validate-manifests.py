@@ -53,7 +53,14 @@ def frontmatter(path):
 
 def check_frontmatter(path, kind):
     """A skill or agent with unparseable frontmatter loads with empty metadata."""
-    import yaml
+    try:
+        import yaml
+    except ImportError:
+        error(
+            "PyYAML is not installed, so frontmatter cannot be checked — "
+            "`pip install pyyaml` (CI installs it for you)"
+        )
+        return
 
     rel = os.path.relpath(path, ROOT)
     block = frontmatter(path)
@@ -97,6 +104,25 @@ AGENT_PROSE = re.compile(r"\b(with\s+`Agent`|spawn\w*\s+(the\s+|a\s+|an\s+)?(age
 # ...and one that names one of these is describing a `Bash` call, where
 # `run_in_background` is correct and must not be flagged.
 BASH_MARKERS = ("`Bash`", "shell loop", "blocking call", "`sleep`")
+# The parameter, not the English word: "no isolation needed here" must not read as
+# a paragraph that passes `isolation:`.
+ISOLATION_PARAM = re.compile(r"`isolation[:`]|\bisolation:\s*[\"']")
+# Clauses end at sentence punctuation followed by space. Version numbers (2.1.232)
+# and `key: value` code spans survive that, which is why it is not a bare period.
+CLAUSE_BREAK = re.compile(r"(?<=[.;!?])\s")
+
+
+def clause_around(text, position):
+    """The sentence-ish span containing `position` — the unit a parameter belongs to."""
+    start = 0
+    end = len(text)
+    for match in CLAUSE_BREAK.finditer(text):
+        if match.end() <= position:
+            start = match.end()
+        else:
+            end = match.start()
+            break
+    return text[start:end]
 
 
 def paragraphs(text):
@@ -139,29 +165,44 @@ def spawn_lint(text):
     for line, block in paragraphs(text):
         if SPAWN_LINT_SUPPRESS in block:
             continue
-        explicit_agent = any(marker in block for marker in AGENT_MARKERS)
-        agent_site = explicit_agent or bool(AGENT_PROSE.search(block))
-        bash_site = any(marker in block for marker in BASH_MARKERS)
+        agent_site = any(marker in block for marker in AGENT_MARKERS) or bool(
+            AGENT_PROSE.search(block)
+        )
 
         def at(match):
             """The line the offending text sits on, not the line the block starts on."""
             return line + block[: match.start()].count("\n")
 
         name_match = re.search(r"`name:", block)
-        if agent_site and name_match and "isolation" not in block:
+        # Match the parameter, not the word. "no isolation needed for a read-only
+        # helper" must still be caught — a writer who justifies omitting it is the
+        # writer most likely to be wrong — and an incidental mention must not
+        # silence the paragraph.
+        if agent_site and name_match and not ISOLATION_PARAM.search(block):
             found.append(
                 (at(name_match), "spawn spec passes `name:` with no `isolation:` — that "
                                  "is a peer session with no completion notification "
                                  "(issue #25)")
             )
+        # Decide this one on the clause the parameter sits in, not the paragraph.
+        # A paragraph may legitimately say "launch the poller with
+        # `run_in_background: true` … then spawn a subagent to read it": the
+        # parameter belongs to the Bash call there, and flagging it would block CI
+        # over a correct line. Silence beats a false error here — an un-flagged
+        # inert parameter is untidy, a blocked build over a right one is not.
         background_match = re.search(r"run_in_background", block)
-        if background_match and not bash_site and (
-            explicit_agent or "isolation" in block or AGENT_PROSE.search(block)
-        ):
-            found.append(
-                (at(background_match), "`run_in_background` on an `Agent` spawn is inert "
-                                       "— drop it (it stays on `Bash` calls)")
+        if background_match:
+            clause = clause_around(block, background_match.start())
+            agent_clause = (
+                any(marker in clause for marker in AGENT_MARKERS)
+                or bool(AGENT_PROSE.search(clause))
+                or bool(ISOLATION_PARAM.search(clause))
             )
+            if agent_clause and not any(marker in clause for marker in BASH_MARKERS):
+                found.append(
+                    (at(background_match), "`run_in_background` on an `Agent` spawn is "
+                                           "inert — drop it (it stays on `Bash` calls)")
+                )
     return found
 
 

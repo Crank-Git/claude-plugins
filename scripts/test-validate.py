@@ -91,6 +91,48 @@ check(
     "safe. <!-- spawn-lint: ok -->",
 )
 
+# --- review round 1: the word "isolation" is not the parameter ---------------
+check(
+    "a paragraph that argues against isolation is still flagged",
+    'Spawn with `Agent`, `agentType: "x"`, `name: "y"` — no isolation needed for a '
+    "read-only helper.",
+    expect_names=1,
+)
+check(
+    "an incidental mention of the word does not silence the check",
+    'Spawn with `Agent`, `agentType: "x"`, `name: "y"`. Worktree isolation is discussed '
+    "elsewhere.",
+    expect_names=1,
+)
+check(
+    "the real parameter still clears it",
+    'Spawn with `Agent`, `agentType: "x"`, `name: "y"`, `isolation: "worktree"`.',
+)
+
+# --- review round 1: run_in_background is judged by its own clause ------------
+check(
+    "a Bash launch in the same paragraph as a later spawn is not flagged",
+    "Launch the poller with `run_in_background: true` so it is not cut short; spawn a "
+    "subagent later to read it.",
+)
+check(
+    "the real deploy.md Bash sentence stays clean",
+    "The deploy-watcher waits with the single-call shell loop, launched with "
+    "`run_in_background: true` so the wait is not cut short by the `Bash` timeout "
+    "ceiling — and returns one terminal deployment per run.",
+)
+check(
+    "the real deploy.md Agent sentence is flagged",
+    "Spawn the agent type `issue-flow:deploy-watcher` (`run_in_background: true`, "
+    "**Haiku**, self-contained). It is decision-free.",
+    expect_bg=1,
+)
+check(
+    "an isolation parameter in the clause marks it as an Agent spawn",
+    '- `run_in_background: true` and `isolation: "worktree"` compose — both take.',
+    expect_bg=1,
+)
+
 # --- paragraph splitting and line numbers ------------------------------------
 two_blocks = (
     "First paragraph, nothing to see.\n"

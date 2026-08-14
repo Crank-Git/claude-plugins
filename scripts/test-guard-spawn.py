@@ -71,7 +71,7 @@ output = expect(
 )
 if output:
     reason = output["hookSpecificOutput"]["permissionDecisionReason"]
-    for expected in ("drop `name`", 'isolation: "worktree"', "ISSUE_FLOW_SPAWN_GUARD=off"):
+    for expected in ("Drop `name`", 'isolation: "worktree"', "ISSUE_FLOW_SPAWN_GUARD"):
         if expected not in reason:
             failures.append(f"the deny reason should offer {expected!r}: {reason[:200]}")
     if output["hookSpecificOutput"].get("hookEventName") != "PreToolUse":
@@ -103,6 +103,34 @@ expect(
     {"tool_name": "Task", "tool_input": {"name": "reviewer", "prompt": "x"}},
     True,
 )
+
+# --- review round 1: the message must not mislead -----------------------------
+output = run(spawn(name="reviewer", prompt="x"))
+reason = output["hookSpecificOutput"]["permissionDecisionReason"] if output else ""
+if "Drop `name`" not in reason:
+    failures.append("dropping the name must be the primary remedy, not the second option")
+if "commits never reach your branch" not in reason:
+    failures.append(
+        "the message must warn that adding isolation to a worker's child strands its commits"
+    )
+if "settings.json" not in reason or "start a new session" not in reason:
+    failures.append(
+        "the escape must say it is read at session start, not exported from a tool call"
+    )
+
+# --- ask mode -----------------------------------------------------------------
+asked = run(spawn(name="reviewer", prompt="x"), env={"ISSUE_FLOW_SPAWN_GUARD": "ask"})
+if not asked or asked["hookSpecificOutput"].get("permissionDecision") != "ask":
+    failures.append(f"ask mode should ask, not deny: {asked}")
+denied_default = run(spawn(name="reviewer", prompt="x"))
+if not denied(denied_default):
+    failures.append("the default mode is deny")
+for value in ("DENY", "  deny  ", "anything-else"):
+    if not denied(run(spawn(name="r", prompt="x"), env={"ISSUE_FLOW_SPAWN_GUARD": value})):
+        failures.append(f"an unrecognized setting {value!r} must fall back to deny")
+for value in ("off", "OFF", "0", "false", "no"):
+    if run(spawn(name="r", prompt="x"), env={"ISSUE_FLOW_SPAWN_GUARD": value}) is not None:
+        failures.append(f"{value!r} should disable the guard")
 
 # --- the escape hatch ---------------------------------------------------------
 expect(

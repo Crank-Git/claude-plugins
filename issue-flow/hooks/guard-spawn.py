@@ -32,7 +32,27 @@ Design choices, both deliberate:
   and allows the call. A guard against a lost result must never become the reason
   work cannot start.
 
-Set `ISSUE_FLOW_SPAWN_GUARD=off` to disable it for a session.
+`ISSUE_FLOW_SPAWN_GUARD` selects the behavior: `deny` (default), `ask` (prompt
+instead of refusing), or `off`.
+
+**`ask` is for interactive sessions only.** Measured: a background agent whose
+spawn hits an `ask` decision **hangs** — there is nobody to answer the prompt, so
+the tool call never returns and the agent sits at its last line until it is
+killed. Every issue-flow worker is a background agent, so `ask` would trade a
+recoverable refusal for exactly the silent stall this guard exists to prevent.
+That is why the default is `deny`, which returns an actionable error the agent can
+act on by itself. A named peer session is a legitimate thing to
+want — the harness offers it deliberately — and a plugin has no business refusing
+it in a project that is not running issue-flow. Hooks read the environment as it
+was when the session started, so `export` from a tool call does nothing: set it in
+the project's `.claude/settings.json` instead and start a new session.
+
+    { "env": { "ISSUE_FLOW_SPAWN_GUARD": "off" } }
+
+For reference, `issue-flow` itself never trips this guard: its only named spawn is
+`worker-<issue>`, which always carries `isolation: "worktree"`. What trips it is an
+improvised `name:` at a spawn site that did not specify one — the failure in
+issue #25.
 """
 
 import json
@@ -42,23 +62,45 @@ import sys
 SPAWN_TOOLS = {"Agent", "Task"}
 
 REASON = (
-    "Blocked by issue-flow's spawn guard: this Agent call passes `name` with no "
-    "`isolation`, which does not create a background subagent. It creates a peer "
-    "session that never fires a completion notification, does not appear in "
-    "ListAgents, and whose final text is delivered to nobody — you would wait for a "
-    "result that cannot arrive.\n"
-    "Re-issue it one of two ways:\n"
-    "  • drop `name` — an unnamed subagent always notifies (use this unless you "
-    "must message the agent later); or\n"
-    "  • keep `name` and add `isolation: \"worktree\"` — required for issue-flow "
-    "workers, which are messaged for rework.\n"
-    "Set ISSUE_FLOW_SPAWN_GUARD=off to disable this guard."
+    "issue-flow spawn guard: this Agent call passes `name` with no `isolation`, which "
+    "does not create a background subagent. It creates a peer session — no completion "
+    "notification ever, invisible to ListAgents, and its final text delivered to "
+    "nobody. You would wait for a result that cannot arrive.\n"
+    "\n"
+    "**Drop `name`.** An unnamed subagent always notifies, and it still runs in your "
+    "worktree on your branch, so its work reaches you. This is the fix in almost every "
+    "case — including a worker spawning its own review or fix children.\n"
+    "\n"
+    "Add `isolation: \"worktree\"` **only** if you also need the agent addressable by "
+    "`SendMessage` later, as the PM does for `worker-<issue>`. Do not add it to a "
+    "worker's own child: an isolated child builds in a separate worktree and its "
+    "commits never reach your branch (agents/issue-worker.md).\n"
+    "\n"
+    "Deliberately want a peer session? This guard reads its setting from the "
+    "environment at session start, so exporting a variable now will not change it — "
+    "put this in the project's .claude/settings.json and start a new session:\n"
+    '    "env": { "ISSUE_FLOW_SPAWN_GUARD": "off" }'
+)
+
+ASK_REASON = REASON.replace(
+    "issue-flow spawn guard:", "issue-flow spawn guard (approve only if deliberate):", 1
 )
 
 
+def mode():
+    """off | ask | deny — read once per call, from the session's environment."""
+    setting = os.environ.get("ISSUE_FLOW_SPAWN_GUARD", "").strip().lower()
+    if setting in {"off", "0", "false", "no"}:
+        return "off"
+    if setting == "ask":
+        return "ask"
+    return "deny"
+
+
 def decide(payload):
-    """Return a deny reason, or None to allow."""
-    if os.environ.get("ISSUE_FLOW_SPAWN_GUARD", "").lower() in {"off", "0", "false"}:
+    """Return (permissionDecision, reason), or None to stay out of the way."""
+    guard = mode()
+    if guard == "off":
         return None
     if payload.get("tool_name") not in SPAWN_TOOLS:
         return None
@@ -70,7 +112,7 @@ def decide(payload):
         return None
     if tool_input.get("isolation"):
         return None
-    return REASON
+    return ("ask", ASK_REASON) if guard == "ask" else ("deny", REASON)
 
 
 def main():
@@ -78,16 +120,17 @@ def main():
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             return
-        reason = decide(payload)
+        decision = decide(payload)
     except Exception:  # fail open — see the module docstring
         return
-    if not reason:
+    if not decision:
         return
+    permission, reason = decision
     json.dump(
         {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
+                "permissionDecision": permission,
                 "permissionDecisionReason": reason,
             }
         },

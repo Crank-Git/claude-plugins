@@ -121,8 +121,13 @@ Two consequences the PM should treat as load-bearing:
    <!-- spawn-lint: ok -->
 
    This one is enforced, not just documented. The plugin ships a `PreToolUse` guard
-   (`hooks/guard-spawn.py`) that denies the shape with the fix in the message, for the PM
-   and for anything a worker spawns alike. `ISSUE_FLOW_SPAWN_GUARD=off` disables it.
+   (`hooks/guard-spawn.py`) that denies the shape with the fix in the message — measured
+   to fire for the PM's own calls **and** for anything a worker spawns, which is what
+   covers a worker naming its review children. It reads `ISSUE_FLOW_SPAWN_GUARD` from the
+   environment **at session start**: put `"env": {"ISSUE_FLOW_SPAWN_GUARD": "off"}` in a
+   project's `.claude/settings.json` where named peer sessions are wanted deliberately
+   (exporting it from a tool call does nothing). `ask` exists but is interactive-only —
+   a background agent hangs on the prompt, which is worse than the refusal.
 2. **Unnamed un-isolated helpers are reachable and do notify.** `deploy-watcher`,
    `code-auditor` and `ux-explorer` are spawned without isolation and are *not* peer
    sessions: they fire completion notifications and they accept a mid-run `SendMessage`

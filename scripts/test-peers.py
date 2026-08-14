@@ -142,6 +142,23 @@ try:
         if expected not in rendered:
             fail(f"rendered output is missing {expected!r}")
 
+    # --- unread mail only, or a delivered message reads as undelivered forever -
+    # Real records stay in the inbox with an explicit "read" flag.
+    delivered = os.path.join(work, "session-aaa", "inboxes", "probe-b.json")
+    with open(delivered, "w") as handle:
+        json.dump(
+            [
+                {"from": "team-lead", "text": "one", "read": True},
+                {"from": "team-lead", "text": "two", "read": True},
+                {"from": "team-lead", "text": "three", "read": False},
+            ],
+            handle,
+        )
+    reread = peers.collect(work)
+    counts = {m["name"]: m["pendingMail"] for t in reread for m in t["members"]}
+    if counts.get("probe-b") != 1:
+        fail(f"only unread mail is pending, expected 1, got {counts.get('probe-b')}")
+
     # --- a roster is not proof of life ----------------------------------------
     # 72 entries from a five-day-dead session were on the machine that filed
     # issue #25, and a named grandchild outlived its parent by half an hour with
@@ -152,7 +169,11 @@ try:
     fresh = os.path.join(work, "session-bbb", "config.json")
     os.utime(fresh, (NOW - 60, NOW - 60))
 
-    live, stale = peers.collect(work, stale_hours=24, now=NOW)
+    isolated_projects = os.path.join(work, "projects")
+    os.makedirs(isolated_projects, exist_ok=True)
+    live, stale = peers.collect(
+        work, stale_hours=24, now=NOW, projects_dir=isolated_projects
+    )
     if [t["session"] for t in live] != ["session-bbb"]:
         fail(f"only the freshly-touched team is live: {[t['session'] for t in live]}")
     if [t["session"] for t in stale] != ["session-aaa"]:
@@ -175,6 +196,40 @@ try:
     plain = peers.collect(work)
     if not isinstance(plain, list) or len(plain) != 2:
         fail(f"collect() without stale_hours should return a flat list of 2: {plain}")
+
+    # --- liveness follows the owning SESSION, not the roster's age ------------
+    # A PM waiting 36h on one silent helper is the case this tool exists for. Its
+    # roster has not been rewritten since the peer joined, but its session is
+    # alive and rewriting its transcript, so the team must stay listed.
+    projects = os.path.join(work, "projects", "-some-repo")
+    os.makedirs(projects, exist_ok=True)
+    transcript = os.path.join(projects, "aaa11111-2222-3333-4444-555555555555.jsonl")
+    with open(transcript, "w") as handle:
+        handle.write("{}\n")
+    os.utime(transcript, (NOW - 30, NOW - 30))          # session active 30s ago
+    long_wait = make_team(
+        work,
+        "session-aaa11111",
+        [lead_for("session-aaa11111"), dict(IN_PROCESS_PEER, name="patient-helper")],
+    )
+    ancient = NOW - 36 * 3600
+    os.utime(os.path.join(long_wait, "config.json"), (ancient, ancient))
+
+    live, stale = peers.collect(
+        work, stale_hours=24, now=NOW, projects_dir=os.path.join(work, "projects")
+    )
+    if "session-aaa11111" not in [t["session"] for t in live]:
+        fail("a 36h-old roster whose session is still active must stay listed")
+    if "session-aaa11111" in [t["session"] for t in stale]:
+        fail("an active session's team must not be filtered as stale")
+
+    # ...and when that session goes quiet, the same team becomes cleanup.
+    os.utime(transcript, (NOW - 48 * 3600, NOW - 48 * 3600))
+    live, stale = peers.collect(
+        work, stale_hours=24, now=NOW, projects_dir=os.path.join(work, "projects")
+    )
+    if "session-aaa11111" not in [t["session"] for t in stale]:
+        fail("once the owning session goes quiet the team is stale")
 finally:
     shutil.rmtree(work, ignore_errors=True)
 
