@@ -88,6 +88,96 @@ def check_links(path):
             error(f"{rel}: link points at a missing file — {target}")
 
 
+SPAWN_LINT_SUPPRESS = "<!-- spawn-lint: ok -->"
+
+# A paragraph that names one of these is unambiguously describing an `Agent` spawn.
+AGENT_MARKERS = ("agentType", "subagent_type", "Agent(")
+# The same thing said in prose — "spawn the agent type `x`", "spawn a subagent".
+AGENT_PROSE = re.compile(r"\b(with\s+`Agent`|spawn\w*\s+(the\s+|a\s+|an\s+)?(agent|subagent))", re.I)
+# ...and one that names one of these is describing a `Bash` call, where
+# `run_in_background` is correct and must not be flagged.
+BASH_MARKERS = ("`Bash`", "shell loop", "blocking call", "`sleep`")
+
+
+def paragraphs(text):
+    """Yield (first_line_number, paragraph) for each blank-line-separated block.
+
+    Line numbers are counted, not derived from block lengths — a run of blank
+    lines or a trailing space would otherwise drift the count, and a lint that
+    reports the wrong line is a lint people learn to ignore.
+    """
+    block, start = [], 1
+    for number, line in enumerate(text.split("\n"), 1):
+        if line.strip():
+            if not block:
+                start = number
+            block.append(line)
+        elif block:
+            yield start, "\n".join(block)
+            block = []
+    if block:
+        yield start, "\n".join(block)
+
+
+def spawn_lint(text):
+    """Return [(line, message)] for documented `Agent` spawns that would break.
+
+    Two failures, both measured against Claude Code 2.1.232 (issue #25):
+
+    1. `name:` without `isolation:` does not produce a background subagent. It
+       produces a peer session with no completion notification, invisible to
+       `ListAgents`, whose plain-text answer reaches nobody. A PM that follows
+       such a spec waits for a result that will never arrive.
+    2. `run_in_background` on an `Agent` call is inert — present in the tool
+       schema on some sessions, absent on others, and ineffective either way.
+       On a `Bash` call the same parameter is correct and stays.
+
+    Put `<!-- spawn-lint: ok -->` in a paragraph that discusses these shapes
+    without prescribing them (the rule itself has to be written down somewhere).
+    """
+    found = []
+    for line, block in paragraphs(text):
+        if SPAWN_LINT_SUPPRESS in block:
+            continue
+        explicit_agent = any(marker in block for marker in AGENT_MARKERS)
+        agent_site = explicit_agent or bool(AGENT_PROSE.search(block))
+        bash_site = any(marker in block for marker in BASH_MARKERS)
+
+        def at(match):
+            """The line the offending text sits on, not the line the block starts on."""
+            return line + block[: match.start()].count("\n")
+
+        name_match = re.search(r"`name:", block)
+        if agent_site and name_match and "isolation" not in block:
+            found.append(
+                (at(name_match), "spawn spec passes `name:` with no `isolation:` — that "
+                                 "is a peer session with no completion notification "
+                                 "(issue #25)")
+            )
+        background_match = re.search(r"run_in_background", block)
+        if background_match and not bash_site and (
+            explicit_agent or "isolation" in block or AGENT_PROSE.search(block)
+        ):
+            found.append(
+                (at(background_match), "`run_in_background` on an `Agent` spawn is inert "
+                                       "— drop it (it stays on `Bash` calls)")
+            )
+    return found
+
+
+def check_spawn_specs(path):
+    """Documented spawn shapes that strand the PM are worse than no docs."""
+    rel = os.path.relpath(path, ROOT)
+    with open(path) as handle:
+        text = handle.read()
+    # Blank the frontmatter rather than removing it, so line numbers stay true.
+    match = re.match(r"^---\n.*?\n---\n", text, re.S)
+    if match:
+        text = "\n" * match.group(0).count("\n") + text[match.end():]
+    for line, message in spawn_lint(text):
+        error(f"{rel}:{line}: {message}")
+
+
 def main():
     marketplace_path = os.path.join(ROOT, ".claude-plugin", "marketplace.json")
     marketplace = load_json(marketplace_path)
@@ -143,6 +233,7 @@ def main():
 
         for markdown in walk_markdown(plugin_dir):
             check_links(markdown)
+            check_spawn_specs(markdown)
 
     for markdown in walk_markdown(ROOT, top_only=True):
         check_links(markdown)
