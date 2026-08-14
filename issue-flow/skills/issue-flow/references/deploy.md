@@ -104,7 +104,7 @@ The batch model still applies — it exists for merge hygiene as much as for cos
 
 ## The deploy-watcher companion
 
-Spawn the agent type `issue-flow:deploy-watcher` (`run_in_background: true`, **Haiku**,
+Spawn the agent type `issue-flow:deploy-watcher` (**Haiku**,
 self-contained — full prompt in `agents/deploy-watcher.md`). It is **decision-free**: it
 watches and reports, never fixes/labels/merges. Prefer the **companion** mode — one
 standing watcher launched in Phase 0 that monitors the deploy branch continuously and

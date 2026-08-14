@@ -76,7 +76,12 @@ Verified by direct measurement on 2.1.224, with two workers running concurrently
   makes the rework path below safe.
 - `SendMessage` to a **still-running** worker is delivered too — see
   [Messaging a worker](#messaging-a-worker).
-- `run_in_background: true` and `isolation: "worktree"` compose — both take.
+- **Do not pass `run_in_background` to `Agent`.** It composed with `isolation` when this
+  section was first measured on 2.1.224, but on 2.1.232 it is present in the tool schema
+  on some sessions and absent on others, and where it is present it changes nothing —
+  including on the named un-isolated spawn below, which it does **not** rescue. Background
+  is the default for a subagent either way. It stays correct on `Bash` calls, which is a
+  different tool and a different parameter. <!-- spawn-lint: ok -->
 - Neither agent's directory moved when the other started or finished.
 - The PM's working directory never moved, and `git -C <checkout>` from the PM returned
   exit 0 throughout — including compound commands.
@@ -97,25 +102,71 @@ stepping through twenty separate turns:
   two steps, roughly two turns (~11s) after it was sent. The worker read it, acted on it,
   and carried on with the rest of its work — no restart, no lost context, no step spent
   waiting to receive.
-- The same run confirmed the reverse of the rule above: a background agent spawned
-  **without** `isolation` never received the message at all, across two attempts. It is
-  routed to a different, mailbox-style channel that does not drain into a running loop,
-  and it does not appear in `ListAgents` as a subagent.
+- On 2.1.228 this section also recorded that an agent spawned **without** `isolation`
+  never received a message at all. **That does not hold on 2.1.232** and the difference is
+  what was addressed: an *unnamed* un-isolated agent, messaged by its `agentId`, took the
+  message on its **first** tool round and answered in 6.7s. What was really being measured
+  was a *named* un-isolated spawn, which is a different animal — see below.
 
 Two consequences the PM should treat as load-bearing:
 
-1. **`name:` + `isolation: "worktree"` at spawn is what keeps a worker addressable.**
-   Isolation is not only about filesystem separation — dropping it (for a "small" issue,
-   say) also silently breaks the `SendMessage` rework path. Always pass both.
-2. **The un-isolated agents are unreachable by design.** `deploy-watcher`, `code-auditor`
-   and `ux-explorer` are spawned without isolation, so nothing can be pushed to them
-   mid-run; `TaskStop` is the only lever. Do not build a flow that depends on messaging
-   them.
+1. **`name:` without `isolation:` is the one spawn shape that strands you.** It does not
+   produce a background subagent at all. It produces a **peer session**: no completion
+   notification, ever; absent from both sections of `ListAgents`; and — the part that
+   actually costs you the run — **its final text is delivered to nobody**. The peer does
+   the work and answers into the void. (Measured 2.1.232, four spawn cells, two backends;
+   the peer's own transcript shows it received the task, answered in plain text, and had
+   to `ToolSearch` for `SendMessage` before it could deliver anything at all.) So: spawn
+   **unnamed**, or pass `name:` **with** `isolation:`. Never `name:` alone.
+   <!-- spawn-lint: ok -->
+
+   This one is enforced, not just documented. The plugin ships a `PreToolUse` guard
+   (`hooks/guard-spawn.py`) that denies the shape with the fix in the message — measured
+   to fire for the PM's own calls **and** for anything a worker spawns, which is what
+   covers a worker naming its review children. It reads `ISSUE_FLOW_SPAWN_GUARD` from the
+   environment **at session start**: put `"env": {"ISSUE_FLOW_SPAWN_GUARD": "off"}` in a
+   project's `.claude/settings.json` where named peer sessions are wanted deliberately
+   (exporting it from a tool call does nothing). `ask` exists but is interactive-only —
+   a background agent hangs on the prompt, which is worse than the refusal.
+2. **Unnamed un-isolated helpers are reachable and do notify.** `deploy-watcher`,
+   `code-auditor` and `ux-explorer` are spawned without isolation and are *not* peer
+   sessions: they fire completion notifications and they accept a mid-run `SendMessage`
+   addressed by `agentId`. What they lack is a stable name, so keep the `agentId` from the
+   spawn result if you intend to push anything to them.
 
 Because delivery costs the worker no turn of its own, a correction that arrives while it
 works is cheap. Use it: see the mid-flight push in
 [collaboration.md](collaboration.md) and the batch findings log in
 [batching.md](batching.md).
+
+## Seeing and reaping peer sessions
+
+If one is created anyway — an older session, a helper spawned before the guard, a hand-run
+`Agent` call with the guard off — the PM cannot find it through `ListAgents`, which shows
+neither the agent nor a hint that it exists. It is on disk, and the plugin ships the reader:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/peers.py"          # live peers, stale rosters summarized
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/peers.py" --json   # same, machine-readable
+```
+
+It reads `~/.claude/teams/<session>/config.json` (the roster, with each member's backend)
+and `inboxes/<name>.json` (mail the peer has not drained). Two cautions the script prints
+and the PM should believe:
+
+- **A roster entry is not proof of life.** Team directories outlive their sessions — one
+  machine in this investigation carried 72 entries from a session five days dead, and a
+  named grandchild was still listed half an hour after its parent exited while
+  `ListAgents` showed nothing. Rosters untouched for a day are counted, not listed.
+- **Reaping takes two steps, and the first `shutdown_request` is often ignored.** A peer
+  that has never been messaged drains nothing: send it an ordinary message first, then
+  `{"type": "shutdown_request"}`, then re-run the script and confirm the roster shrank.
+  Only the `tmux` backend leaves an OS process behind; in-process peers leave none.
+
+Worktrees are the other thing that accumulates. An agent's worktree survives its
+completion **locked**, so `git worktree remove --force` is refused (`-f -f` is required)
+and removal leaves the `worktree-agent-<id>` branch behind — which is why the Stage C2
+teardown sweeps with `-f -f` and then `git branch -D`.
 
 ## The one thing you must do yourself
 

@@ -27,5 +27,14 @@ jobs:
       - name: Install PyYAML
         run: pip install --quiet pyyaml
 
+      - name: Test the validator's own checks
+        run: python3 scripts/test-validate.py
+
+      - name: Test the peer detector
+        run: python3 scripts/test-peers.py
+
+      - name: Test the spawn guard hook
+        run: python3 scripts/test-guard-spawn.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py
