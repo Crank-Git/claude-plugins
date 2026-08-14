@@ -7,7 +7,7 @@ to react to what it returns.
 
 ## Launch
 
-Spawn with `Agent`, `agentType: "issue-flow:issue-worker"`, `run_in_background: true`,
+Spawn with `Agent`, `agentType: "issue-flow:issue-worker"`,
 **`isolation: "worktree"`**, one per claimed issue, up to `concurrency` at once (across
 all live batches). `isolation: "worktree"` is not optional — it is what keeps concurrent
 workers apart. See [worktrees.md](worktrees.md) for what goes wrong without it.

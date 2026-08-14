@@ -5,6 +5,10 @@
 CLAUDE.local.md
 .claude.local.md
 
+# Python (the validator and its tests)
+__pycache__/
+*.pyc
+
 # OS / editor
 .DS_Store
 Thumbs.db
