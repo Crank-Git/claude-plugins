@@ -138,9 +138,16 @@ Two mechanisms, layered:
 
 1. **`[skip ci]` in the head commit message.** GitHub Actions natively skips `push` and
    `pull_request` triggered workflows when the head commit message contains `[skip ci]`
-   (or `[ci skip]`); Gitea Actions does the same from Gitea 1.20. Workers append it to
-   **every pushed head commit**; that keeps the draft PR CI-free through readying and
-   merging too.
+   (or `[ci skip]`); Gitea Actions does the same from Gitea 1.20. Both match the token
+   **anywhere in the message, body included** — measured on GitHub Actions and on Gitea
+   1.25.3, where a commit whose subject was clean and whose body held the token registered
+   no run. Workers append it to **every pushed head commit**.
+
+   That covers commits a worker writes. It does **not** cover the merge commit, which the
+   forge composes: on Gitea a squash merge's default message is the pull request title
+   alone, so the token does not survive the sub-merge and the integration branch runs CI
+   once per member. Write the merge message explicitly (step 3 of the sub-merge checklist
+   below) rather than trusting either forge's default.
 2. **Draft PRs.** Sub-PRs open as drafts — signals "not for dev" to humans and to any
    bot keyed on ready state. (Draft alone does **not** stop either provider — `[skip ci]`
    does the work.)
@@ -169,9 +176,31 @@ unchanged.
 2. Behind/conflicting with the integration branch (a sibling landed) → update the
    branch; mechanical conflicts resolved directly or by a short-lived worker with both
    issues' context; **semantic** conflicts → `status:needs-feedback` on both issues.
-3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
-   one clean squashed commit per member on the integration branch. Head commit carries
-   `[skip ci]`, so this stays CI-free.
+3. `forge.pr.ready` then `forge.pr.merge.squash` **with the message written out** —
+   `--subject "<title> (#<pr>)" --body "[skip ci]"` (`--title`/`--message` on `tea`,
+   `title`/`message` on the MCP) — then `forge.branch.delete` on Gitea. One clean squashed
+   commit per member on the integration branch, and it stays CI-free because *you* put the
+   token there. Neither default is safe: GitHub folds the member's commits into the body
+   (the token arrives by luck, and a repository setting can withdraw it), Gitea folds
+   nothing and starts a run per sub-merge.
+3b. Read the integration branch head afterwards — **fetch first, always.** The merge
+   happened on the server, so without the fetch `<remote>/<integration-branch>` still
+   points at the *previous* head (typically the last member's `[skip ci]` squash), the
+   grep returns non-zero, and the check reports the intended state for a merge it never
+   saw:
+
+   ```bash
+   git fetch <remote> <integration-branch> -q
+   git log -1 --format='%s%n%b' <remote>/<integration-branch> \
+     | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true
+   ```
+
+   `0` means a run just started. **If the batch PR is already open**, the sub-merge
+   replaced the head the batch gate was watching: push a fresh subject-only trigger commit
+   and re-anchor the watch **when this is the last member**, and otherwise leave the branch
+   CI-free and let the gate (step 2 of the batch checklist) re-trigger once on the final
+   head — a trigger per late member burns one full run each, which is the cost the batch
+   model exists to avoid (SKILL.md Stage C1 step 4b).
 4. Member → `forge.issue.status.set <m> status:batched`, which **removes `status:in-review`
    in the same operation** (at most one `status:` label per issue — a bare
    `forge.issue.label.add` leaves it in two states and breaks status queries); tick the
@@ -199,8 +228,17 @@ Batch complete = every member `status:batched` or terminally parked.
    before pushing — `git log -1 --format='%s%n%b' | grep -ciE 'skip|no ci' || true` must
    print `0` (the alternation covers `[no ci]`, which a bare `skip` match misses; the
    `|| true` absorbs `grep -c`'s exit 1 on a zero count, which is the *passing* case) —
-   then poll `ci-watch` to a terminal verdict. `no-run-registered` means the trigger
-   did not take; it is never a pass.
+   then poll `ci-watch` to a terminal verdict, anchored to the SHA you just pushed.
+   `no-run-registered` means the trigger did not take; it is never a pass. Grep the
+   commit to tell the two causes apart (`… | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true`, the `|| true` keeping the no-token
+   branch reachable under `set -e`; fetch the SHA first, or `git log` exits 128 and the
+   empty pipe reads as a clean message): a token in the message → push one clean
+   subject-only trigger and re-watch; a clean message → re-poll the run list for that SHA
+   once after another 60–120 seconds (a slow self-hosted runner registering after the
+   60-second window is the usual cause) and only then call it a runner or workflow
+   problem, which a re-push does not fix. **Repeat this step after every later push to the integration branch** —
+   a late member's sub-merge writes a new head carrying the token (sub-merge step 3) and
+   quietly suppresses the run again.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
    cross-member integration problems (interface drift between members, duplicate
    migrations, conflicting config). Cheap — no CI involved.
@@ -208,7 +246,16 @@ Batch complete = every member `status:batched` or terminally parked.
    `[skip ci]`; final push re-runs CI. CI red for pre-existing/base reasons → `blocked`.
 5. Conflict vs dev (another batch landed first) → resolve once here; semantic → park.
 6. Merge `--merge` (preserves per-member squashed commits; `--squash` only if the
-   project's history style demands one commit). Delete the branch.
+   project's history style demands one commit), always with an explicit subject and an
+   **empty** body, then `git fetch <remote> dev -q` and check `<remote>/dev`'s head for the
+   token whatever the style (the fetch is not optional — the merge was server-side, so an
+   unfetched tracking ref answers for the commit *before* it). A repository can compose
+   merge-commit messages from the PR description too. A suppressed head means no post-merge
+   run and no deploy: remedy with one clean subject-only empty commit on dev, **checked out
+   by name and pushed** (not a rewrite of the merge commit), or start the deploy at the
+   provider if dev is protected ([deploy.md](deploy.md)) — and re-anchor Stage D's
+   correlation to the pushed commit, which is now the head the deploy builds. Delete the
+   branch.
 7. Close members: automatic via `Closes #` **only when dev is the default branch**;
    otherwise close each manually with a comment linking the batch PR. Close the `type:batch`
    tracking issue; an epic closes when its last child closes.
