@@ -464,7 +464,8 @@ costs one turn and is always the cheaper error.
 
   This is the rule that keeps the backlog from regenerating: an issue filed for a stale
   record is repaired by editing a file, which falsifies the next record, which is the next
-  issue. `references/finding-policy.md` holds the reasoning and the measurement.
+  issue. [../references/finding-policy.md](../references/finding-policy.md) holds the
+  reasoning and the measurement.
 
 ## Turn budget — checkpoint instead of grinding
 
