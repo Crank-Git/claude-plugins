@@ -34,9 +34,13 @@ features:                     # ordered, must match features/ exactly
 ## Non-goals              — explicitly out of v1 (as load-bearing as Goals)
 ## Users & personas       — who, what each needs, what each is allowed to do
 ## Feature map            — table: feature set → spec file → epic → mockups
-## Architecture & stack   — components, data flow, hosting/deploy target, key libraries,
-                            and why each choice beat the alternative
-## Data model             — every entity: fields, types, constraints, relations, lifecycle
+## Architecture & stack   — opens with a mermaid flowchart of the components and the
+                            data flow between them; then per component: hosting/deploy
+                            target, key libraries, and why each choice beat the
+                            alternative
+## Data model             — opens with a mermaid erDiagram of the entities and their
+                            relations; then per entity: fields, types, constraints,
+                            lifecycle
 ## Cross-cutting concerns — auth/authz model, error handling, validation, logging,
                             accessibility, i18n, performance targets, security posture
 ## Environments & config  — envs, every environment variable and what it does, secrets
@@ -64,7 +68,9 @@ id: <feature-id>              # stable, kebab-case, NEVER changed once issued �
 feature: <Feature Name>       # display name; safe to rename
 epic: <epic name from spec.md>
 status: planned               # planned → issued → built (spec-to-issues and the PM
-                              #   advance this; only `planned` gets issues created)
+                              #   advance this; only `planned` gets issues created).
+                              #   `retired` (set by /spec-update, from any state) also
+                              #   gets no issues: the file stays as the record.
 issues: []                    # filled in by spec-to-issues with the numbers it created;
                               #   leave empty — the planner never writes issue numbers
 mockups: [mockups/03-<screen>.html]
@@ -77,7 +83,11 @@ mockups: [mockups/03-<screen>.html]
                            per statement, active voice, present tense, no conjunction,
                            no "should be able to", no vague quantity. Patterns and
                            worked examples: references/ste.md § 4.
-## User flows            — step by step, happy path first, including entry points
+## User flows            — one mermaid diagram per flow (flowchart, or sequenceDiagram
+                           when actors exchange messages): happy path plus each failure
+                           branch, entry points included — followed by the numbered STE
+                           steps. Diagram and steps must agree; the reviewer reads the
+                           picture, the builder reads the steps.
 ## Screens & states      — per screen: purpose, regions, every state
                            (empty / loading / populated / error / permission-denied),
                            and its mockup link
@@ -112,11 +122,19 @@ Write it as `features/00-foundation.md` plus an `Epic 0: Foundation` entry, cove
 - Repo scaffold for the chosen stack — framework init, package manifest, directory
   layout as the spec's `Architecture & stack` describes it.
 - Test harness (unit + integration) and the exact `test` command; lint, format,
-  typecheck commands. These become `conventions` in every worker brief.
+  typecheck commands. These become `conventions` in every worker brief. The lint config
+  enables the linter's **complexity and maintainability rules** (cyclomatic complexity,
+  max nesting, unused/dead code — whatever the chosen linter offers), mirroring
+  `.claude/rules/quality.md`: what a rule can catch mechanically should fail a check,
+  not wait for a reviewer.
 - CI workflow that runs those commands on pull requests.
 - The **branch model the user chose** (below) — create `dev` when they picked
   dev-and-live.
 - Deploy target wiring for the spec's hosting choice, and the seed/demo data script.
+  When the hosting platform deploys outside the forge's own Actions, this includes a
+  **deploy-status command** (for example `scripts/deploy-status.sh`) printing
+  `<state> <jobId> <sha>` with a normalized state — issue-flow's Stage D watches
+  deployments through it, and ships no provider integrations of its own.
 - A first end-to-end smoke path (app builds, starts, serves one route) so epic 1 has
   something to build on.
 
@@ -141,6 +159,29 @@ epics so that:
   `Depends on: <epic>`.
 - **Order by dependency, then user value.** Epic 0 is the foundation; epic 1 should
   produce something demoable.
+
+### Diagrams
+
+Anything the spec describes as a flow, a lifecycle, or a structure of connected parts
+gets a picture, not only prose: a reviewer must be able to judge "is this how it should
+work?" from the diagram alone, without decoding a page of text. Three are mandatory —
+the architecture flowchart (`spec.md`), the data-model erDiagram (`spec.md`), and one
+diagram per user flow (each `features/NN-*.md`). Add a `stateDiagram-v2` for any entity
+or screen whose lifecycle has more than three states.
+
+Rules:
+
+- Fenced ` ```mermaid ` blocks in the markdown — GitHub and Gitea render them natively,
+  so the spec is visual straight from the forge. The mermaid source in the `.md` files
+  is the single source of truth for every diagram.
+- Label nodes and edges with the spec's `## Terms` vocabulary — a diagram that invents
+  its own names for things splits the controlled vocabulary.
+- One diagram, one question. A flow diagram answers "what happens, in what order, and
+  where can it fail"; it does not also carry the data model. Keep each diagram to one
+  screen — split a sprawling flow at its natural handoff rather than shrinking the text.
+- The prose next to a diagram states what the picture cannot: constraints, quantities,
+  exact field names, error copy. Never let diagram and prose disagree — on a revision
+  round, whichever one you edit, update the other.
 
 ### Mockups
 

@@ -40,9 +40,10 @@ patterns for each. Two rules carry the most weight here:
   `{ id, file }` pairs). A missing or unreadable feature file is a hard stop — report exactly which, and send the user back to the
   planner rather than guessing the feature's contents.
 - **Work only `status: planned` features.** Each feature file carries a stable `id:` and
-  a `status:` of `planned | issued | built`. Create issues for the `planned` ones; skip
-  `issued`/`built` and say so. This is what makes second and third planning waves safe —
-  a re-approved spec re-issues only what actually changed.
+  a `status:` of `planned | issued | built | retired`. Create issues for the `planned`
+  ones; skip `issued`/`built`/`retired` and say so. This is what makes second and third
+  planning waves safe — a re-approved spec re-issues only what actually changed, and a
+  feature `/spec-update` retired stays retired instead of resurfacing as new work.
   (A `spec_version: 1` spec has no ids or statuses. Treat every feature as `planned`,
   fall back to the marker/title dedup in Preflight, and tell the user their spec predates
   per-feature tracking.)
@@ -75,7 +76,14 @@ resolved in [../../references/forge.md](../../references/forge.md).
   naming its feature id: `<!-- spec:<slug> feature:<feature-id> -->`. Search existing
   issue bodies for that marker before creating anything (`forge.issue.list` filtered on
   `feature:<id>` in the body, plus a title search as a secondary signal). Titles get
-  renamed between planning waves; ids do not, which is why they are the dedup key. Skip
+  renamed between planning waves; ids do not, which is why they are the dedup key.
+  **`feature:none` is a reserved marker value, never a feature id.** The PM writes it on
+  a `type:spec-update` issue for a divergence that belongs to `spec.md` itself rather
+  than to any feature ([../issue-flow/references/spec-maintenance.md](../issue-flow/references/spec-maintenance.md)).
+  This skill never creates one and never dedups against one — but an **open** one means
+  `spec.md` is known to describe the wrong product, so read it before you plan: report it
+  to the user and offer to stop, because a planning wave scoped from a spec that is known
+  wrong issues the wrong work. Skip
   or update duplicates instead of double-creating; report what was skipped.
 
 ## 3 — Decompose each epic into sub-issues

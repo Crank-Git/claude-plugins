@@ -20,8 +20,14 @@ The worker is an **independent Opus engineer**: it may research (web), use avail
 servers (via `ToolSearch`), and spawn its own child agents/Workflows — all on the
 **Sonnet** tier and all **confined to that issue's worktree**. The PM sets none of this;
 it lives in the worker's agent definition. A worker may also **file new untriaged issues**
-for out-of-scope discoveries — which is one reason the PM re-triages (Stage A) on every
-worker completion.
+for out-of-scope discoveries — but only those that pass the filing gate (behavior, a
+user-visible output, a guard that guards nothing, a blocked epic, a maintainer ruling).
+Every other discovery it repairs in its own PR, within the files its change already
+touches, and reports in `notesForPM` when the repair would reach wider. Filed issues are
+picked up by the **next scheduled sweep** (SKILL.md, Stage A0/A: on load, before a merge
+gate, or when the ready pool empties) — a routine worker completion does *not* trigger a
+full re-triage. `notesForPM` is the exception: read it on every verdict, because a note
+the PM never routes is a finding lost.
 
 ## Handoff brief (the only thing the PM passes in)
 
@@ -35,12 +41,14 @@ base:         <remote>/epic/<n>-<slug>   (the integration branch; <remote>/<dev>
 ci:           skip | run               (skip = batch member: draft PR, [skip ci] commits, local checks.
                                         run = standalone/hotfix: normal PR, watch provider CI)
 batch:        epic #<n> | batch #<n> | standalone
+members:      <count of members in the batch; 1 for standalone/hotfix>
+              (how the worker knows whether a crossCheck is owed — never omit it)
 crossCheck:   <URL of the batch cross-check comment on the tracking issue>
-              (required whenever `batch` names an epic/batch with other members;
-               `n/a` only for standalone/hotfix. The worker validates this as its
-               first action and returns `blocked` without doing any work if it is
-               absent, empty, "pending", or unresolvable — see SKILL.md Stage B
-               step 5.)
+              (required whenever `members` > 1; `n/a` for standalone/hotfix and for a
+               single-member batch — SKILL.md Stage B step 4 skips the check there.
+               The worker validates this as its first action and returns `blocked`
+               without doing any work if it is absent, empty, "pending", or
+               unresolvable — see SKILL.md Stage B step 5.)
 remote:       <remote>
 forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
               repo, interface}. The worker uses it to pick gh or tea. Never omit it; a worker
@@ -106,6 +114,11 @@ terminally parked — not between rework rounds.
 
 ## Return contract
 
+**This mirrors the schema in `agents/issue-worker.md`, which is authoritative** — only the
+agent definition reaches the worker at runtime, so that file decides what is emitted and
+this one must track it. Change both together, or the PM reads a field the worker never
+sends.
+
 The worker returns exactly this object as its final message:
 
 ```json
@@ -126,7 +139,8 @@ The worker returns exactly this object as its final message:
                                "properties": { "text": {"type":"string"}, "met": {"type":"boolean"}, "evidence": {"type":"string"} } } },
     "question":   { "type": "string" },
     "blocker":    { "type": "string" },
-    "openThreads":{ "type": "number" }
+    "openThreads":{ "type": "number" },
+    "notesForPM": { "type": "string", "description": "findings outside this issue that the worker neither filed nor repaired — a stale record in a file its change never touched, a wider prose drift; one line each, null when there are none" }
   }
 }
 ```
@@ -135,10 +149,17 @@ The worker returns exactly this object as its final message:
 
 | outcome | PM action (the gate) |
 |---|---|
-| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker via `SendMessage`, see Rework; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash` **with the message written out — `--subject "<title> (#<pr>)" --body "[skip ci]"`, never the forge's default** (SKILL.md C1 step 4: GitHub's default carries the token only by luck, Gitea's carries none and starts a full CI run per sub-merge); then **check what landed** — fetch the integration branch and grep its head, re-triggering only per C1 step 4b (SKILL.md C1 step 4b); **`forge.issue.status.set <member> status:batched` as its own step, before any bookkeeping** (SKILL.md C1 step 5 — never a bare label add); then tick the tracking checklist, remove the worktree it reported (`git worktree remove --force <worktree>`; `git worktree prune`), launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: merge to dev, Stage D directly. |
+| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + the **pre-patch check** when the PR adds or changes tests (`localChecks` states the new tests failed against the pre-patch code — absent goes back to the worker) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker via `SendMessage`, see Rework; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash` **with the message written out — `--subject "<title> (#<pr>)" --body "[skip ci]"`, never the forge's default** (SKILL.md C1 step 4: GitHub's default carries the token only by luck, Gitea's carries none and starts a full CI run per sub-merge); then **check what landed** — fetch the integration branch and grep its head, re-triggering only per C1 step 4b (SKILL.md C1 step 4b); **`forge.issue.status.set <member> status:batched` as its own step, before any bookkeeping** (SKILL.md C1 step 5 — never a bare label add); then tick the tracking checklist, remove the worktree it reported (`git worktree remove --force <worktree>`; `git worktree prune`), launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: gate the PR like a batch PR into dev (the batch-PR column of `prAuthority` — [session-config.md](session-config.md)), merge `--squash`, **close the issue** (`Closes #` auto-closes only when dev is the default branch; otherwise close it manually with a comment linking the PR) and clear its status label, then Stage D directly. |
 | `checkpoint` | The worker hit its turn budget with work pushed; nothing is wrong. Re-spawn a **fresh** worker (not `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and `remaining` appended to the plan. Remove the checkpointed worktree (`git worktree remove --force <worktree>`; `git branch -D worktree-agent-<id>`) — the replacement gets a fresh one and re-checks-out the published branch. **Leave the status label untouched** — `status:in-review` if the worker had opened its PR, `status:in-progress` if it checkpointed before that; both are correct and the replacement adopts whatever PR exists. Post one terse comment recording the checkpoint (the chain cap counts these). **Does not free the slot** — the issue is still in flight. No gate, no digest line. |
 | `needs-feedback` | Label `status:needs-feedback`, post `question` as an issue comment, park per the feedback policy (notify; ask interactively only when it gates work). Free the slot. |
 | `blocked` | Label `status:blocked`, comment naming `blocker`. Free the slot. |
+
+**On every verdict, read `notesForPM`** — it carries findings the worker neither filed nor
+repaired, and it is the only place they exist. Put each one through the filing gate: a
+gate-passing finding becomes an issue, everything else becomes a **pending repair** in your
+`flow:status` marker block, taken by the next batch that touches those files. A
+`notesForPM` you do not read is a finding the worker deliberately did not file because this
+policy told it not to.
 
 After handling any verdict, top the pipeline back up to `concurrency`.
 

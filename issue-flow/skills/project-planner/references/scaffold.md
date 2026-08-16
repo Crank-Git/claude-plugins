@@ -4,25 +4,36 @@ How to generate `spec.html`, `CLAUDE.md`, the `.claude/` directory and `.gitigno
 `SKILL.md` Phase 3 points here. Nothing in `.claude/` is written before the user
 approves it in the Phase 4 review round.
 
-### spec.html
+### spec.html — generated from the markdown, never hand-authored
 
-A single self-contained HTML document at `docs/specs/spec.html` — the review artifact
-the user actually reads. Same rules as the mockups (inline everything, responsive,
-light + dark, no external requests). It must contain:
+The markdown package **is** the spec; `spec.html` is a build product. Copy the
+renderer shipped with this skill — `scripts/render-spec.py`, relative to this file at
+[`../scripts/render-spec.py`](../scripts/render-spec.py) — into the project as
+`docs/specs/render-spec.py`, then generate with:
 
-- Project name, status, date, and a one-screen executive summary.
-- Goals / non-goals / personas, the feature map, architecture, data model, epics and
-  milestones — the whole design, readable top to bottom, not a link farm.
-- A section per feature set summarising its FRs and acceptance criteria, linking to
-  its `features/NN-*.md`.
-- Every mockup embedded **both ways**: an `<iframe src="mockups/NN-x.html">` *and* a
-  visible `<a href="mockups/NN-x.html" target="_blank">Open in new tab</a>` next to it.
-  Browsers treat local files as opaque origins and an iframe can silently render blank,
-  so the link is the guaranteed path, not a decoration.
-- Open questions and assumptions, called out visually.
+```
+python3 docs/specs/render-spec.py
+```
 
-All links relative. Regenerate `spec.html` at the end of **every** revision round and
-set `html_generated` in the front-matter — a stale spec.html is worse than none.
+The script reads `spec.md` plus every feature file its front-matter lists, renders the
+**full content of every file in place** — the whole spec readable top to bottom, never
+a summary that links out to the `.md` files — and writes a single self-contained
+`spec.html` (inline CSS/JS, responsive, light + dark, no external requests). It also
+embeds each feature's mockups **both ways**: an `<iframe>` *and* a visible
+`Open in new tab` link (browsers treat local files as opaque origins, so an iframe can
+silently render blank — the link is the guaranteed path), styles `Assumptions` /
+`Risks & open questions` as call-outs, and stamps `html_generated` in `spec.md`.
+
+Two planner duties around it:
+
+- **Vendor mermaid once.** Download a pinned mermaid build (for example
+  `https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js`) to
+  `docs/specs/assets/mermaid.min.js` and commit it — the renderer inlines it so the
+  spec's diagrams render offline. If the download is impossible, say so: the page still
+  builds, with each diagram shown as its readable source.
+- **Regenerate at the end of every revision round** — a stale `spec.html` is worse
+  than none. Edit the markdown, rerun the script; never edit `spec.html` directly,
+  the next run overwrites it.
 
 ### CLAUDE.md
 
@@ -38,10 +49,90 @@ words. Spec-derived facts only:
   `docs/specs/spec.md` and the relevant `docs/specs/features/*.md` before building a
   feature." Write it in backticks, **not** as an `@docs/specs/spec.md` import — an
   import loads the whole spec into every session's context.
+- **The filing gate** — the five cases that earn a tracker issue, and the rule that every
+  other finding is repaired by the change set that found it. It belongs here rather than in
+  a `.claude/rules/` file: a path-scoped rule loads only while a matching file is open, and
+  this gate binds the decision to *create* an issue, which happens with no file open at
+  all. It also binds the human maintainer, who reads `CLAUDE.md`. The template and the
+  routing are below, under "The filing gate".
 
 If `CLAUDE.md` already exists, propose additions and merge on approval; never rewrite.
 If the repo has `AGENTS.md` and no `CLAUDE.md`, create `CLAUDE.md` containing
 `@AGENTS.md` plus the project-specific additions.
+
+#### The filing gate
+
+Copy the five cases and the repair routing from
+[`../../../references/finding-policy.md`](../../../references/finding-policy.md) into
+`CLAUDE.md`, and make the **routing** concrete for this project's branch model — the
+routing is the half that makes the rule executable, so a template without it ships a gate
+that forbids filing and never says where the repair goes:
+
+```markdown
+- **A finding earns a tracker issue in five cases, and never otherwise.** Behavior. A
+  user-visible output. A guard that guards nothing. A blocked epic. A question the
+  maintainer must rule. One carve-out: anything under `docs/specs/` that describes the
+  wrong product earns a spec-update issue, because the spec decides what gets built.
+
+  **Every other finding is repaired by the change set that found it, and no issue is
+  filed.** A falsified sentence, a moved citation, a stale count, a missing term and prose
+  drift each reach the repair. A repair that turns out to touch behavior stops and is
+  filed as a behavior finding.
+
+  Where the repair goes:
+  - Found while building an issue → that issue's own PR, limited to files it already
+    touches.
+  - Found at review of <integration branch>  → a documentation commit on that branch,
+    before the CI-trigger commit.
+  - Found with nothing open → <where this project parks it: the status issue, a
+    `docs/` TODO block, the next batch>.
+```
+
+Replace the two placeholders with this project's actual branch model and parking place.
+Write the gate even when the project has no tracker yet. A repository that grows its own
+rule requiring every change set to record a changelog row, or its own guard that files an
+issue for each stale citation, regenerates backlog faster than it clears it — this rule is
+what stops that before the first issue is filed.
+
+**Bound the changelog obligation in the same block.** The documentation duty this plugin
+ships attaches to a **decision at the batch gate** — never to a member, never to a change
+set. Write that as a rule alongside the gate:
+
+```markdown
+- A changelog or spec-changelog entry records a **decision**, made at a batch gate. No
+  rule, hook, CI check, or test may require a changelog row, a spec edit, or a
+  docs-accuracy pass **per change set or per batch member** — a batch that shipped as
+  planned earns no line. A test that asserts per-member bookkeeping agreement re-creates
+  the churn the filing gate exists to prevent, and fails review here.
+```
+
+This bound exists because it was measured missing: a project hardened the plugin's
+"cheap, always" changelog mechanism into a per-member two-file mandate held together by
+1,500+ lines of agreement tests, and the two most-contended files in the repository
+became a mandatory edit for every member. The obligation firing per member, not per
+finding, regenerates the churn regardless of what the filing gate says.
+
+### docs/adr/ and docs/external.md
+
+Two documentation homes the spec cannot cover, scaffolded now so the loop has somewhere
+to write:
+
+- **`docs/adr/`** — architecture decision records. The spec records why each launch
+  choice beat its alternative; decisions made *during* issue-flow runs — gate disputes,
+  worker findings with lasting rationale, approaches chosen mid-batch — otherwise die
+  with their batch. Seed the directory with `docs/adr/0000-template.md` (`# NNNN —
+  <decision>` / `Date` / `Status: accepted | superseded by NNNN` / `## Context` /
+  `## Decision` / `## Consequences`, one page maximum, STE) and write `0001-<slug>.md`
+  now for any genuinely contested choice the interview settled (stack, data store,
+  auth). issue-flow's PM appends entries at the batch gate
+  ([spec-maintenance.md](../../issue-flow/references/spec-maintenance.md)).
+- **`docs/external.md`** — the facts agents repeatedly need that live *outside* the
+  codebase: environment variable **names** (never values), third-party dashboard and
+  webhook/payment setup steps, test accounts and where they come from, where users file
+  support requests. One file with headed sections; grow it into `docs/external/` only
+  when one file stops being enough. **Never a secret, a token, or a credential** — the
+  file is committed. Seed it from the spec's `Environments & config` and `Interfaces`
+  sections, with `TODO(#issue)` markers for what Epic 0 will fill in.
 
 ### .claude/
 
@@ -148,6 +239,30 @@ URL and version in the PR body.
 Anything that creates, deletes or changes a cloud resource is confirmed with the user
 first. Read-only `list-*` / `get-*` / `describe-*` calls are the safe way to learn the
 shape of a real resource.
+```
+
+**Always write `.claude/rules/quality.md`** — the maintainability rules that issue-flow's
+review lenses check the diff against, one pass/fail verdict per rule (the worker's
+self-review and the PM's batch review both read it). These are the defects a green test
+suite never catches, so without an enumerated list nothing in the loop penalizes them.
+Path-scope it to the project's source globs. Start from this floor and add what the
+spec's conventions imply:
+
+```markdown
+---
+paths:
+  - "src/**/*.{ts,tsx,js,jsx}"     # ← the project's actual source globs
+---
+
+# Quality rules — reviewed per rule, pass or fail
+
+- No try/catch that only rethrows, or logs and continues.
+- No defensive casts or null checks against states the types already exclude.
+- No abstraction with a single caller; inline it until a second caller exists.
+- No configuration for a value nothing varies.
+- No dead code and no commented-out code.
+- A comment states what the code cannot (see the STE rule); delete comments that
+  restate the code.
 ```
 
 Other path-scoped rules follow the same shape:
