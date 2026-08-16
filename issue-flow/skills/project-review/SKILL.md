@@ -8,7 +8,8 @@ description: >
   E2E tests, fans out browser-driving ux-explorer agents that click through the app as
   end users (screenshots + manual-ready walkthroughs), and a code-auditor that sweeps
   for TODOs, stubs, and acceptance-criteria gaps. Nothing is fixed — the PM gathers
-  every sub-agent report, files one tracker issue per finding, lands a manual +
+  every sub-agent report, files an issue for each finding that passes the filing gate
+  (behavior, output, a dead guard, a blocked epic, a maintainer ruling), lands a manual +
   E2E-test PR via a review-scribe, then confirms launching issue-flow to work the new
   backlog.
 ---
@@ -161,7 +162,25 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
    listing both flows) and against the tracker (`forge.issue.list` filtered on
    `<title keywords>`, plus bodies carrying `<!-- project-review:` from prior runs).
    Update/comment an existing issue instead of double-filing.
-3. **File one issue per finding** (`forge.issue.create`):
+3. **Apply the filing gate** — [../../references/finding-policy.md](../../references/finding-policy.md).
+   A finding earns an issue in five cases and never otherwise: **behavior**, **a
+   user-visible output**, **a guard that guards nothing**, **a blocked epic**, **a question
+   the maintainer must rule**. Severity is not the test — a cosmetic behavior defect
+   qualifies; a critical-sounding documentation drift does not. Two things that **do**
+   qualify and are easy to mis-route: anything under `docs/specs/` that describes the wrong
+   product (`type:spec-update` — `features/*.md` and `spec.md` alike), and **an app change
+   an E2E test needs** — a missing
+   test-id, no seed data, no state-reset hook — which is case 3, because without it the
+   suite cannot guard the flow at all. Everything else goes to the Phase 4 deliverables PR
+   when it is documentation the scribe already writes, and otherwise to the run ledger only.
+   **Carry the routed list forward** — it goes in the scribe's brief at Phase 4, or it does
+   not happen.
+   A review that walks an app end to end produces far more findings than it produces work;
+   filing them all is what turns the next issue-flow session into a documentation loop. The
+   gate never suppresses evidence — every finding still reaches the ledger, the summary
+   issue, and the digest. State the counts in both: findings gathered, issues filed,
+   repairs routed to the PR, findings recorded only.
+4. **File one issue per qualifying finding** (`forge.issue.create`):
    - **Title:** user-language, from the finding (`Sign-up form loses data on validation error`).
    - **Body:** what happened (steps to reproduce, expected vs actual), **evidence**
      (screenshot reference, console/server-log excerpt, `path:line` for code findings),
@@ -176,7 +195,7 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
    - Screenshots referenced in issue bodies must be durable: they land in the docs PR
      (Phase 4) — link the repo path; until that PR merges, attach the image to the
      issue (`forge.issue.create` body upload or a comment) so the evidence stands alone.
-4. Keep a run ledger (finding → issue #) for the digest and the summary issue.
+5. Keep a run ledger (finding → issue # / PR / recorded-only) for the digest and the summary issue.
 
 # Phase 4 — Deliverables PR (manual + E2E tests)
 
@@ -188,12 +207,18 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
    the Phase 1 E2E detection (`framework/dir/runCmd`), `SANDBOX_URL`, `manualDir`
    (default `docs/manual`), repo conventions, and **`steRule:`** — the path to the
    project's `.claude/rules/ste.md` if it has one, else the plugin's
-   `references/ste.md` — so the manual is written to the same standard as the spec.
+   `references/ste.md` — so the manual is written to the same standard as the spec —
+   and **`routedRepairs:`**, the Phase 3 list of documentation findings routed to this PR
+   (each one: file, what is wrong, what it should say). The scribe repairs those in the
+   same PR. Omit the list and the ledger claims work nobody did.
 2. On its verdict: check `notesForPM` (app changes a test needs — e.g. missing
-   test-ids — become **filed issues**, marker included, not fixes), then push the
+   test-ids — go through the filing gate like any other finding; a missing test-id that
+   blocks a test is a dead guard and earns an issue, marker included, not a fix), then push the
    branch and open **one PR `review/<RUN_ID>` → dev**: title
    `Project review <RUN_ID>: user manual + E2E smoke tests`, body listing manual pages,
-   tests added, the test-run result, and the filed-issue ledger. Docs + tests only —
+   tests added, the test-run result, **the routed repairs and where each landed** (read them
+   from the scribe's `repairsMade`), and the filed-issue ledger. A repair the scribe reports
+   unmade is stated as unmade with its reason, never dropped from the list. Docs + tests only —
    this PR is standalone, so **CI runs normally** on it.
 3. Gate it like any PM merge: CI green, threads resolved → merge. CI failure caused by
    the new tests → send it back to a scribe re-run; **never patch product code to make
@@ -207,12 +232,14 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
    issue-flow's co-operator check (`references/collaboration.md`) would read this record
    as another person running the loop.
    Body (bookkeeping, not a work item): sandbox used, flows walked with the outcome of
-   each, findings filed as a table (issue # / severity / type), the manual + E2E PR link,
-   and anything skipped (flow cap, degraded browser).
+   each, findings filed as a table (issue # / severity / type), findings routed to the
+   deliverables PR or recorded only (one line each, so nothing the run found is lost),
+   the manual + E2E PR link, and anything skipped (flow cap, degraded browser).
    Marker `<!-- project-review:<RUN_ID> -->` — the next run scopes from it.
    Close it once the handoff decision is made.
-2. **Terminal digest** (≤10 lines): flows walked, issues filed by severity, PR link,
-   skipped items, open questions.
+2. **Terminal digest** (≤10 lines): flows walked, findings gathered, issues filed by
+   severity, repairs routed to the PR, findings recorded only, PR link, skipped items,
+   open questions.
 3. **Hand off.** The review ends by pointing issue-flow at the new backlog. Ask
    (`AskUserQuestion`): **launch `/issue-flow` now** to work the filed findings, or
    stop here with the backlog triaged and ready? If the user already told you up front

@@ -77,8 +77,34 @@ the E2E tests, and starts three kinds of sub-agent:
 - `issue-flow:review-scribe` turns the walkthroughs into a user manual and E2E tests, on
   a documentation PR.
 
-**The review fixes nothing.** The PM collects every report, files one tracker issue per
-finding (`review:finding`), and then asks you to launch `/issue-flow` on the new backlog.
+**The review fixes nothing.** The PM collects every report, files a `review:finding` issue
+for each finding that passes the filing gate below, routes the rest to the deliverables PR
+or the run ledger, and then asks you to launch `/issue-flow` on the new backlog.
+
+## What earns an issue
+
+A finding earns a tracker issue in five cases, and never otherwise: **behavior**, **a
+user-visible output**, **a guard that guards nothing**, **a blocked epic**, or **a question
+the maintainer must rule**. Everything else — a falsified sentence, a moved citation, a
+stale count, prose drift, a record of a past state — is repaired by the change set that
+found it, and no issue is filed.
+
+One carve-out: anything under `docs/specs/` that describes the wrong product still earns an
+issue. The spec is not a record of a past state — it is the input that decides what gets
+built next, so a reader who trusts a wrong sentence there builds the wrong thing.
+
+Without that gate the loop feeds itself: repairing a stale record edits a file, which
+falsifies a second record, which is the next issue. The backlog then regenerates at about
+the rate it closes and the loop never reaches "backlog empty". So the PM also proves the
+loop is converging — at each merge gate it records how many issues the session filed from
+findings, its own and any `/project-review` run's, against how many the merge closed, in a
+durable line on its own status issue. Filed at or
+above closed for three consecutive gates stops the session and reports the three pairs.
+Epic decomposition and batch tracking issues don't count: those are planned work becoming
+schedulable, not a backlog feeding itself.
+
+[`references/finding-policy.md`](references/finding-policy.md) holds the gate, where each
+non-qualifying repair goes, and the measurement that earned the rule.
 
 ## Two standards for everything the plugin writes
 

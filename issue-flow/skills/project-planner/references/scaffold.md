@@ -38,10 +38,50 @@ words. Spec-derived facts only:
   `docs/specs/spec.md` and the relevant `docs/specs/features/*.md` before building a
   feature." Write it in backticks, **not** as an `@docs/specs/spec.md` import — an
   import loads the whole spec into every session's context.
+- **The filing gate** — the five cases that earn a tracker issue, and the rule that every
+  other finding is repaired by the change set that found it. It belongs here rather than in
+  a `.claude/rules/` file: a path-scoped rule loads only while a matching file is open, and
+  this gate binds the decision to *create* an issue, which happens with no file open at
+  all. It also binds the human maintainer, who reads `CLAUDE.md`. The template and the
+  routing are below, under "The filing gate".
 
 If `CLAUDE.md` already exists, propose additions and merge on approval; never rewrite.
 If the repo has `AGENTS.md` and no `CLAUDE.md`, create `CLAUDE.md` containing
 `@AGENTS.md` plus the project-specific additions.
+
+#### The filing gate
+
+Copy the five cases and the repair routing from
+[`../../../references/finding-policy.md`](../../../references/finding-policy.md) into
+`CLAUDE.md`, and make the **routing** concrete for this project's branch model — the
+routing is the half that makes the rule executable, so a template without it ships a gate
+that forbids filing and never says where the repair goes:
+
+```markdown
+- **A finding earns a tracker issue in five cases, and never otherwise.** Behavior. A
+  user-visible output. A guard that guards nothing. A blocked epic. A question the
+  maintainer must rule. One carve-out: anything under `docs/specs/` that describes the
+  wrong product earns a spec-update issue, because the spec decides what gets built.
+
+  **Every other finding is repaired by the change set that found it, and no issue is
+  filed.** A falsified sentence, a moved citation, a stale count, a missing term and prose
+  drift each reach the repair. A repair that turns out to touch behavior stops and is
+  filed as a behavior finding.
+
+  Where the repair goes:
+  - Found while building an issue → that issue's own PR, limited to files it already
+    touches.
+  - Found at review of <integration branch>  → a documentation commit on that branch,
+    before the CI-trigger commit.
+  - Found with nothing open → <where this project parks it: the status issue, a
+    `docs/` TODO block, the next batch>.
+```
+
+Replace the two placeholders with this project's actual branch model and parking place.
+Write the gate even when the project has no tracker yet. A repository that grows its own
+rule requiring every change set to record a changelog row, or its own guard that files an
+issue for each stale citation, regenerates backlog faster than it clears it — this rule is
+what stops that before the first issue is filed.
 
 ### .claude/
 

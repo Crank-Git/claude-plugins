@@ -445,10 +445,26 @@ costs one turn and is always the cheaper error.
 - **Stay in your lane.** One issue, one worktree (you + all children). Don't re-triage,
   re-prioritize, pick up other issues, or change labels beyond
   `status:in-progress → status:in-review`.
-- **Out-of-scope discoveries → file, don't fix.** If you find a separate bug or needed
-  change outside this issue's scope, do **not** implement it. Open a new tracker issue
-  describing it (leave it untriaged — no status label — so the PM triages it), reference
-  it from your PR if relevant, and continue your own issue.
+- **Out-of-scope discoveries → file, don't fix — but only if the finding passes the filing
+  gate.** A finding earns a tracker issue in five cases, and never otherwise: **behavior**,
+  **a user-visible output**, **a guard that guards nothing** (including an app change a
+  test needs — a missing test-id, no seed data, no state-reset hook), **a blocked epic**,
+  **a question the maintainer must rule**. Anything under `docs/specs/` that describes the
+  wrong product is the one carve-out and earns a `type:spec-update` issue.
+  In those cases do **not** implement it: open a new
+  tracker issue describing it (leave it untriaged — no status label — so the PM triages
+  it), reference it from your PR if relevant, and continue your own issue.
+
+  **Every other finding you repair in your own PR, in the same change set, and you file
+  nothing.** A sentence your change falsified, a citation or line number your change moved,
+  a stale count or version in prose, a missing term, spelling and formatting drift — these
+  are part of the change that caused them, not new work. Keep the repair to files your
+  change already touched; note anything wider in `notesForPM` instead of widening the diff.
+  A repair that turns out to touch behavior stops and is filed as a behavior finding.
+
+  This is the rule that keeps the backlog from regenerating: an issue filed for a stale
+  record is repaired by editing a file, which falsifies the next record, which is the next
+  issue. `references/finding-policy.md` holds the reasoning and the measurement.
 
 ## Turn budget — checkpoint instead of grinding
 
@@ -502,7 +518,8 @@ branch and your verdict.
   ],
   "question": "<required when outcome=needs-feedback: the exact decision needed>",
   "blocker": "<required when outcome=blocked: what is blocking, named>",
-  "openThreads": 0
+  "openThreads": 0,
+  "notesForPM": "<findings outside this issue that you did not file and did not repair — a stale record in a file your change never touched, a wider prose drift. One line each. null when there are none.>"
 }
 ```
 

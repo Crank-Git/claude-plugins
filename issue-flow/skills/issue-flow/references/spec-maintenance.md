@@ -22,6 +22,13 @@ Cheap, always. At the batch gate, append to `docs/specs/spec.md` § Changelog:
   merge the two accounts.
 ```
 
+**One entry per *decision* — never one per issue, and never one per batch member.** A batch
+that shipped as planned earns no line. Closed issues are the `## Issue map`'s job, and
+nothing in this plugin requires a change set to write a changelog entry to pass a gate. A
+project that builds such a gate makes the two most-contended files in the repository a
+mandatory edit for every member, and every batch then conflicts by construction. See
+[finding-policy.md](../../../references/finding-policy.md).
+
 One entry per decision, dated, naming the issue or PR. Write it in STE
 ([ste.md](../../../references/ste.md)): one sentence per fact, active voice, present
 tense. Commit it with the batch. This is an audit trail, not a rewrite — it tells the next
@@ -29,14 +36,20 @@ reader that the spec and reality diverged here, and why.
 
 **2. `type:spec-update` issue — when documented behaviour actually changed.**
 
-A changelog line is not enough when a `features/*.md` now *describes the wrong product*:
-an FR was dropped, acceptance criteria were renegotiated, an interface contract changed,
-a data-model field was added or removed. In that case file a `type:spec-update` issue:
+A changelog line is not enough when anything under `docs/specs/` now *describes the wrong
+product*: an FR was dropped, acceptance criteria were renegotiated, an interface contract
+changed, a data-model field was added or removed. That is a `features/*.md` **or `spec.md`
+itself** — its `## Terms` table, data model and cross-cutting concerns are read by every
+worker and by `spec-to-issues`, so a contract that changed there misbuilds the next feature
+as surely as one in a feature file. In that case file a `type:spec-update` issue:
 
-- Title: `Spec update: <feature> — <what changed>`
-- Body: the feature file path, the sections that are now wrong, quotes of both the
+- Title: `Spec update: <feature> — <what changed>`, or `Spec update: spec.md — <what
+  changed>` for a spec-level divergence.
+- Body: the spec file path, the sections that are now wrong, quotes of both the
   current spec text and what actually shipped, and links to the issues/PRs that caused
-  it. Marker `<!-- spec:<slug> feature:<feature-id> -->`.
+  it. Marker `<!-- spec:<slug> feature:<feature-id> -->`, and for a spec-level divergence
+  that belongs to no feature, `<!-- spec:<slug> feature:none -->` — never an invented id,
+  and never an omitted marker, because the next planning wave scopes from it.
 - Label `type:spec-update` + `status:ready`.
 
 It is worked like any other issue — a worker edits the spec files (and only the spec
