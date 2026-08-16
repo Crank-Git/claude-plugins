@@ -224,6 +224,11 @@ Before you declare the planner done, verify:
       every hook approved by the user and guarded against a missing tool.
 - [ ] `.claude/rules/ste.md` — written, scoped to the prose paths, pointing at the
       spec's `## Terms` table. Without it the standard dies at the handoff.
+- [ ] **The filing gate is in `CLAUDE.md`** — the five cases that earn a tracker issue, the
+      rule that every other finding is repaired by the change set that found it, and where
+      each repair goes in this project's branch model. Without it the loop files an issue
+      per stale record and the backlog regenerates as fast as it clears. On a repo that
+      already had a `CLAUDE.md`, proposed and the user declined also satisfies this.
 - [ ] `.claude/rules/*.md` — path-scoped where the content is area-specific.
 - [ ] `.claude/skills/*/SKILL.md` — at minimum `run` and `test` for a fresh project;
       relative paths only, minimal `allowed-tools`.

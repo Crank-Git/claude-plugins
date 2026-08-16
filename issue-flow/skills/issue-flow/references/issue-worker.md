@@ -20,8 +20,12 @@ The worker is an **independent Opus engineer**: it may research (web), use avail
 servers (via `ToolSearch`), and spawn its own child agents/Workflows — all on the
 **Sonnet** tier and all **confined to that issue's worktree**. The PM sets none of this;
 it lives in the worker's agent definition. A worker may also **file new untriaged issues**
-for out-of-scope discoveries — which is one reason the PM re-triages (Stage A) on every
-worker completion.
+for out-of-scope discoveries — but only those that pass the filing gate (behavior, a
+user-visible output, a guard that guards nothing, a blocked epic, a maintainer ruling).
+Every other discovery it repairs in its own PR, within the files its change already
+touches, and reports in `notesForPM` when the repair would reach wider. That is one reason
+the PM re-triages (Stage A) on every worker completion — and one reason to read
+`notesForPM` rather than expecting an issue.
 
 ## Handoff brief (the only thing the PM passes in)
 
@@ -106,6 +110,11 @@ terminally parked — not between rework rounds.
 
 ## Return contract
 
+**This mirrors the schema in `agents/issue-worker.md`, which is authoritative** — only the
+agent definition reaches the worker at runtime, so that file decides what is emitted and
+this one must track it. Change both together, or the PM reads a field the worker never
+sends.
+
 The worker returns exactly this object as its final message:
 
 ```json
@@ -126,7 +135,8 @@ The worker returns exactly this object as its final message:
                                "properties": { "text": {"type":"string"}, "met": {"type":"boolean"}, "evidence": {"type":"string"} } } },
     "question":   { "type": "string" },
     "blocker":    { "type": "string" },
-    "openThreads":{ "type": "number" }
+    "openThreads":{ "type": "number" },
+    "notesForPM": { "type": "string", "description": "findings outside this issue that the worker neither filed nor repaired — a stale record in a file its change never touched, a wider prose drift; one line each, null when there are none" }
   }
 }
 ```
@@ -139,6 +149,13 @@ The worker returns exactly this object as its final message:
 | `checkpoint` | The worker hit its turn budget with work pushed; nothing is wrong. Re-spawn a **fresh** worker (not `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and `remaining` appended to the plan. Remove the checkpointed worktree (`git worktree remove --force <worktree>`; `git branch -D worktree-agent-<id>`) — the replacement gets a fresh one and re-checks-out the published branch. **Leave the status label untouched** — `status:in-review` if the worker had opened its PR, `status:in-progress` if it checkpointed before that; both are correct and the replacement adopts whatever PR exists. Post one terse comment recording the checkpoint (the chain cap counts these). **Does not free the slot** — the issue is still in flight. No gate, no digest line. |
 | `needs-feedback` | Label `status:needs-feedback`, post `question` as an issue comment, park per the feedback policy (notify; ask interactively only when it gates work). Free the slot. |
 | `blocked` | Label `status:blocked`, comment naming `blocker`. Free the slot. |
+
+**On every verdict, read `notesForPM`** — it carries findings the worker neither filed nor
+repaired, and it is the only place they exist. Put each one through the filing gate: a
+gate-passing finding becomes an issue, everything else becomes a **pending repair** in your
+`flow:status` marker block, taken by the next batch that touches those files. A
+`notesForPM` you do not read is a finding the worker deliberately did not file because this
+policy told it not to.
 
 After handling any verdict, top the pipeline back up to `concurrency`.
 

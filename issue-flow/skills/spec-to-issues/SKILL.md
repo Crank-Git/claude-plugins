@@ -75,7 +75,14 @@ resolved in [../../references/forge.md](../../references/forge.md).
   naming its feature id: `<!-- spec:<slug> feature:<feature-id> -->`. Search existing
   issue bodies for that marker before creating anything (`forge.issue.list` filtered on
   `feature:<id>` in the body, plus a title search as a secondary signal). Titles get
-  renamed between planning waves; ids do not, which is why they are the dedup key. Skip
+  renamed between planning waves; ids do not, which is why they are the dedup key.
+  **`feature:none` is a reserved marker value, never a feature id.** The PM writes it on
+  a `type:spec-update` issue for a divergence that belongs to `spec.md` itself rather
+  than to any feature ([../issue-flow/references/spec-maintenance.md](../issue-flow/references/spec-maintenance.md)).
+  This skill never creates one and never dedups against one — but an **open** one means
+  `spec.md` is known to describe the wrong product, so read it before you plan: report it
+  to the user and offer to stop, because a planning wave scoped from a spec that is known
+  wrong issues the wrong work. Skip
   or update duplicates instead of double-creating; report what was skipped.
 
 ## 3 — Decompose each epic into sub-issues
