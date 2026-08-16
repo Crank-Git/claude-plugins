@@ -30,6 +30,7 @@ this decision has its input.)
 ```json
 {
   "version": 1,
+  "pluginVersion": "0.13.0",
   "forge": {
     "type": "gitea",
     "host": "http://gitea.example:3000",
@@ -42,6 +43,8 @@ this decision has its input.)
   "runLength": { "mode": "issues", "value": 25 },
   "prGranularity": "batch",
   "prAuthority": "batch-review",
+  "planReview": false,
+  "reviewWipLimit": 2,
   "review": { "when": "end-of-session" },
   "deploy": {
     "mode": "command",
@@ -73,6 +76,23 @@ practices block. Say which defaults came from the spec when you present them.
 If the file is missing, malformed, or from a newer `version`, fall back to the built-in
 defaults below and say so. Never crash the session over config.
 
+## pluginVersion — upgrade detection
+
+Two versions live in this file and they answer different questions. `version` is the
+**config schema** (a newer one than you know → defaults, as above). `pluginVersion` is
+the **plugin release that last ran this project**, stamped by Phase 0 step 11 every
+time the config is written. The preflight hook compares it against the installed
+plugin's manifest and puts any drift in the session's first digest.
+
+On drift, the config was written by an older plugin, so its silence is not consent:
+a field the saved file lacks may be a question that did not exist yet. During the
+step 11 confirm rounds, ask about every option the current tables define that the file
+has no value for — never default one silently — then stamp the current version. When
+the field is absent entirely (a pre-tracking config), treat it the same way. The
+committed file carries the stamp; a `.issue-flow.local.json` override session leaves
+the committed `pluginVersion` alone and notes the drift for the config's owner in the
+digest instead.
+
 ## forge — which tracker this project uses
 
 `type` is `github` or `gitea`. `interface` is `cli` or `mcp` and selects the primary
@@ -99,7 +119,7 @@ anything unresolved falls back to the saved/default value and is stated in the d
 |---|---|---|
 | How many workers in parallel? | `concurrency` | `1` (serial, easiest to follow) · `3` (default) · `5` (fast, more merge conflicts) |
 | How far should this run go? | `runLength` | `one batch` · `N issues` · `until the backlog is empty` · `until you stop me` |
-| When should a `/project-review` run? | `review.when` | `never` · `after each batch merges` · `end of session` (default) · `after every N batches` |
+| Review plans before workers build them? | `planReview` | `no` (default) · `yes — hold each batch until I approve its plans` |
 | How much merge authority do I have? | `prAuthority` | see the table below |
 
 ### Round 2 — how the work should be built
@@ -109,7 +129,7 @@ anything unresolved falls back to the saved/default value and is stated in the d
 | PR granularity? | `prGranularity` | `batch` (one CI run per epic/batch — default) · `per-issue` (a PR + CI per issue) |
 | Development method? | `practices.tdd` / `.ddd` | `tests first (TDD)` · `domain-driven design` · `both` · `neither — follow existing repo style` (multi-select) |
 | E2E test coverage? | `practices.e2e` | `none` · `user-facing changes only` (default) · `every issue` |
-| Anything else workers must always do? | `practices.coverage`, `.commitStyle`, `.docs`, `notes` | free text + common options (coverage threshold, Conventional Commits, docs for public APIs) |
+| Anything else — coverage, commit style, docs, `/project-review` cadence? | `practices.coverage`, `.commitStyle`, `.docs`, `review.when`, `notes` | free text + common options (coverage threshold, Conventional Commits, docs for public APIs, when a `/project-review` runs — default `end of session`) |
 
 Round 2 is skippable when a saved config exists **and** the user picked a saved-defaults
 option in round 1 — offer "keep saved build practices" as the first choice.
@@ -165,6 +185,50 @@ Rules:
   run).
 
 Hotfixes are `per-issue` regardless of this setting.
+
+## planReview — human review at the plan stage
+
+Off by default. When `true`, the PM holds each multi-member batch after the Stage B
+cross-check and presents the member plans to the operator — one line per member with the
+plan-comment link — via `AskUserQuestion`: approve, revise named plans, or proceed
+without review this batch (SKILL.md Stage B step 4b).
+
+Why it exists: under the default `batch-review`, the human's first contact with a batch
+is the finished multi-issue diff — the most expensive possible review point. The plans
+already exist as issue comments before any code is written, and re-steering there costs
+one comment edit. "A bad line of a plan could lead to hundreds of bad lines of code" —
+the review is deliberately placed where a correction is cheap, not where the diff is
+complete.
+
+Two caveats, stated to the user when they switch it on:
+
+- **It makes the loop synchronous at every batch start.** The plan ask is a real
+  interactive question, and the batch does not launch until it is answered. `planReview`
+  is for sessions where the operator is at the keyboard; an unattended run wants it off.
+- It complements, never replaces, the merge gates — `prAuthority` still governs what the
+  PM may merge.
+
+## reviewWipLimit — the cap in front of the human review gate
+
+Soft cap on batches with anything simultaneously parked `status:awaiting-review`
+(default **2**). A batch counts when its **tracking issue** carries the label (the C2
+hold under `batch-review`) or **any member** does (the C1 per-PR holds under
+`review-all` / `propose-only` — counting only tracking issues would leave the cap
+permanently at zero there, since no batch ever reaches C2 while its members are held).
+At or above it, the PM forms no new batches: it keeps filling worker slots for batches
+already in flight, works parked questions, and notifies the operator once that reviews
+are the constraint, naming the setting and value (SKILL.md Stage B step 1). An approval
+or merge frees the cap.
+
+Why: "the PM moves on rather than block" is correct per batch and wrong in aggregate —
+when human review is the bottleneck, every additional finished-but-unreviewed batch is
+inventory in front of it, aging against a moving dev, not throughput. The cap converts
+silent stacking into one explicit signal.
+
+It binds only under an authority setting that parks batches for review
+(`batch-review`, `review-all`, `propose-only`); under `autonomous` nothing is ever
+`status:awaiting-review` long enough to count. Set it to `null` to disable the cap
+explicitly — recorded, like every other setting.
 
 ## runLength
 
@@ -233,7 +297,7 @@ the handoff brief (`practices:` block in
 
 | Practice | What the PM checks at the gate |
 |---|---|
-| `tdd: true` | the verdict's `localChecks` shows tests that exercise the new behaviour, and the PR history shows tests landing with (or before) the implementation |
+| `tdd: true` | the verdict's `localChecks` shows tests that exercise the new behaviour **and the pre-patch check** (the new tests were run against the pre-patch code and failed — a test that passed before the change proves nothing), and the PR history shows tests landing with (or before) the implementation |
 | `ddd: true` | the plan you commented named the domain concepts/boundaries the issue touches |
 | `e2e: user-facing` / `every issue` | a user-facing change ships with an E2E spec, or the verdict states why one isn't applicable |
 | `coverage: <n>` | the coverage number is in `localChecks` and meets the threshold |
