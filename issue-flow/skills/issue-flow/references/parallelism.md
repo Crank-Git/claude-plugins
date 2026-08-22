@@ -104,6 +104,68 @@ must be atomic-ish. Just before swapping `status:ready → status:in-progress`,
 it (label gone, or assignee set), abandon it and pick the next. Assign `@me` as part
 of the claim so the assignee acts as the lock signal.
 
+For an issue claim across machines, re-read-and-hope has a real gap: two
+workers can both read "unclaimed" and both proceed to set the forge labels.
+Gate entry to that write with the git-native CAS helper first — it doesn't
+replace the forge label swap, it decides who is allowed to attempt it:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" set --repo . --remote origin \
+      --key issue-<n> --expect absent --value '{"owner":"<worker-id>"}'
+
+Only the worker whose call exits 0 proceeds to set `status:in-progress` and
+the assignee on the forge. Exit 2 (`reason: stale`) or exit 3
+(`reason: race-lost`) both mean someone already holds it or won the race —
+abandon and pick the next issue rather than racing the forge write too. Exit
+4 is different: it means the fetch/push itself failed (network, auth, or a
+push rejected for a reason other than someone else's write) — **not** that
+the key is claimed. Retry rather than treating it as a lock. Branch on the
+printed `reason`, not the bare exit code: a malformed invocation (a typo'd
+flag) also exits 2, from argparse itself, with no JSON on stdout at all — a
+caller that only checks the exit code reads that the same way as
+`reason: stale` and wrongly abandons a claimable issue.
+
+**Release on completion or abandonment**, or the key is claimed forever —
+the **claim** gate above is always `--expect absent`, so a key that is still
+written blocks the next claim until it is released or taken over (`set`
+itself takes any JSON as `--expect`, including a value read back from a
+prior `get` — that's what Takeover below relies on). When a worker finishes
+an issue, or abandons a claim it made (crash, reassignment, the issue
+getting reopened), release the key with the CAS-guarded `delete`:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" delete --repo . --remote origin \
+      --key issue-<n> --expect '{"owner":"<worker-id>"}'
+
+**Takeover**, for when the forge says unclaimed but the ref still says
+claimed (the release above was skipped — a crashed worker, a session that
+never got to run it): `get` the current value and `set` with that exact
+value as `--expect`, so the takeover only succeeds against the state you
+actually observed, not a guess:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" get --repo . --remote origin --key issue-<n>
+    # → {"key": "issue-<n>", "value": {"owner": "worker-a"}}
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" set --repo . --remote origin \
+      --key issue-<n> --expect '{"owner":"worker-a"}' --value '{"owner":"<worker-id>"}'
+
+**What this actually guards, today.** `issue-flow` documents one PM per repo per
+session; nothing here coordinates two PM sessions against the same tracker.
+Under that model the PM's own sequencing already serializes every claim it
+issues, and the CAS's load-bearing case is a *user* starting a second,
+overlapping `issue-flow` session by hand (nothing prevents that) — not an
+intentional multi-machine deployment this plugin sets up or documents
+elsewhere. Treat "possibly several machines" above as describing that
+accidental-overlap case, not a supported feature, until a real multi-PM mode
+exists.
+
+**Reverse skew has no reconciliation.** The Invariant 6 sweep (SKILL.md,
+Stage A0/A) re-derives an issue's `status:`/assignee from the forge on every
+cycle, but it never reads a CAS ref — so a ref left `claimed` after a crashed
+or abandoned worker, with the forge already showing the issue unassigned, is
+invisible to that sweep. Nothing currently notices; it waits for a human or a
+future worker to run Takeover by hand. Folding a CAS check into the sweep
+(for each `status:ready` issue about to be claimed, `get` its key and
+Takeover if the ref's owner no longer matches the forge assignee) would close
+this, but is not implemented.
+
 ## Specialist reviewers (worker self-review)
 
 Run reviewers as a Workflow fan-out over the PR diff. Default lenses, pruned to what
@@ -142,6 +204,15 @@ same failure the loop meets elsewhere in other clothes: a self-skipping test sui
 a CI job that never started reports a check, a binary file shows an empty diff. **Absence of
 signal is not a pass.** Wherever a gate reports green, confirm the thing it was gating
 actually ran or was actually read.
+
+Detect the binary case mechanically instead of relying on a reviewer to notice: `git
+diff --numstat <base> <head>` reports `-\t-` for any file git treats as binary. (It has
+no byte-delta column, so it cannot by itself surface an oversized-diff omission — for
+that, compare `git cat-file -s <base>:<path>` against `<head>:<path>` for files whose
+line-count delta looks implausibly small next to their blob-size delta, or check the
+file against the host's diff-size cap directly.) Route flagged paths to a direct-read
+step before the review agent ever sees the PR diff, rather than trusting it to catch
+the gap.
 
 ### Example Workflow script (self-review fan-out)
 
