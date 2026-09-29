@@ -421,10 +421,52 @@ No hit means nothing in the message suppressed anything. **Re-poll once before e
 The `pending:none` window above is 60 seconds, and a busy self-hosted runner that registers
 the run at 90 seconds produces exactly this clean-message `no-run-registered` — the most
 common cause of it, not a broken runner. Poll `forge.run.list` for the SHA again after a
-further 60-120 seconds; if a run has appeared, there was never anything to recover. Only a
-second clean poll points at the runner or the workflow file (disabled runner, billing, a
-workflow the provider cannot parse): a hard stop to resolve or substitute a local gate for,
-not something a re-push fixes.
+further 60-120 seconds; if a run has appeared, there was never anything to recover.
+
+On GitHub the same outcome arrives as `gh pr checks` exiting 1 with a check count of `0`
+(the exit-code note below); treat it exactly like `no-run-registered`, re-poll included,
+since a run registered seconds after the push reads the same way.
+
+**Still nothing → read the pull request before blaming the runner.** A `pull_request`
+workflow starts only on a PR *event* (`opened`, `synchronize`, `reopened` by default), and
+on GitHub only when a merge ref can be built. A state that blocks either produces no run
+and no error — indistinguishable here from a runner problem, and a local-gate substitute
+would merge on a weaker gate for no reason. Measured on github.com (September 2026), with a
+workflow triggered on `pull_request` to `[dev, main]`:
+
+| PR state | Runs registered |
+|---|---|
+| Opened while `CONFLICTING` | none (2.5 min) |
+| Base changed after opening — an `edited` event, not a default trigger | none (2.5 min) |
+| A conflict later cleared from the **base** side (now `MERGEABLE`) | none (4 min) — nothing fired an event |
+| Closed and reopened | one, within seconds |
+| A subject-only commit pushed to the head (`synchronize`) | one |
+
+So read `gh pr view <pr> --json mergeable`. `UNKNOWN` means GitHub has not computed it
+yet — read it again after a few seconds.
+
+- **`CONFLICTING`** → resolve the conflict by pushing to the PR's head branch (for a batch
+  PR, that is the C2 conflict step, done now). The push is the event, so the run starts
+  on its own; watch the new head SHA.
+- **`MERGEABLE`** → close and reopen the PR once (`gh pr close <pr> && gh pr reopen <pr>`),
+  then watch again. Do not try to tell *why* first: a base change shows only in the PR
+  timeline, and a conflict cleared from the base side shows nowhere — the table's third
+  row had nothing but its commits. Reopening is cheap and fires the missing event.
+- **Still no run after the reopen** → only now the runner or the workflow file (disabled
+  runner, billing, a workflow the provider cannot parse): a hard stop to resolve or
+  substitute a local gate for, not something a re-push fixes.
+
+The general rule: **a `pull_request` workflow needs both a merge ref and an event.**
+Anything that removes either stops CI without producing a failure.
+
+**Gitea differs** (measured on 1.25.3 with act_runner 0.4.0): a conflicting PR **does**
+run, so the merge-ref cause does not apply (Gitea's `.mergeable` is a boolean, `false`
+when conflicting). A base change registers no new run either, but the old run for the
+same head SHA stays — so a watch anchored to that SHA reports the **old base's** verdict
+instead of `no-run-registered`. After changing a PR's base on Gitea, close and reopen it
+(`tea pr close <pr> && tea pr reopen <pr>`), and watch until a run newer than the base
+change appears. Closing and reopening, and pushing to the head, both register a new
+run.
 
 **Cap the recovery at one clean re-trigger** — the re-poll is not a re-trigger and does not
 count against the cap. If a commit that greps clean also registers no run across both polls,
@@ -440,7 +482,14 @@ Never wrap `forge.pr.checks` or `forge.run.list` in an agent-driven retry loop o
 forge — and launch the blocking call in the background on either forge, for the ceiling
 reason above. **`gh pr checks` exits non-zero when checks fail (and `8` when they are still
 pending).** That surfaces as a failed `Bash` call — treat the non-zero exit as the
-result, not as a tool error to retry. A background shell reports the same exit status when
+result, not as a tool error to retry. **Exit 1 has two meanings, so check which.**
+Measured on gh 2.88.1: a PR with no run at all exits 1 at once, `--watch` or not, and
+prints `no checks reported on the '<branch>' branch` to **stderr**. That is GitHub's
+`no-run-registered`, not a failure. Do not match the message — a watch that keeps only
+stdout never sees it, and its wording can change between gh versions. Count the checks
+instead: `gh pr view <pr> --json statusCheckRollup --jq '.statusCheckRollup | length'`
+prints `0` for a PR with no run (exit 0) and the check count otherwise. `0` → recover it
+as `no-run-registered` (above). A background shell reports the same exit status when
 it finishes, so the meaning of the code does not change with the launch mode.
 
 **`[skip ci]` is native on both.** Gitea Actions honors `[skip ci]`, `[ci skip]`,

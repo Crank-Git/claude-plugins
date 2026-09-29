@@ -92,7 +92,9 @@ PM does three things, in this order:
 3. Carry on. Do **not** block waiting for an acknowledgement — the worker folds it into its
    next step and reports at its verdict as usual.
 
-What is worth pushing: an answer to a question the worker parked, a scope change or new
+What is worth pushing: an answer to a question the worker parked (when its tree was kept
+at park time — a removed tree means a fresh worker instead,
+[worktrees.md](worktrees.md#parked-standalone-worktrees)), a scope change or new
 constraint on that issue, a human review comment on its PR, a decision that invalidates the
 plan it was handed, and a sibling's discovery that breaks an assumption it is working from
 (see the findings log in [batching.md](batching.md)).
@@ -113,7 +115,9 @@ The same sweep reconciles what changed underneath you:
   worktree (path from its completion notification or verdict when it returned one,
   otherwise the `issue/<n>-<slug>` entry in `git worktree list --porcelain`) with
   `git worktree remove -f -f` — a worker's tree is locked while it runs and plain
-  `--force` refuses a locked tree — then `git branch -D` its `worktree-agent-<id>`,
+  `--force` refuses a locked tree — then run the dead harness-branch sweep
+  ([worktrees.md](worktrees.md#teardown-is-still-the-pms-job); a stopped worker sent no
+  notification, so its `worktree-agent-<id>` name is unknown),
   comment what was completed, free the slot.
 - **Someone pushed to your integration branch** → fetch before every sub-merge; treat
   their commits as part of the base and resolve conflicts against the updated branch.

@@ -65,8 +65,10 @@ Verified by direct measurement on 2.1.224, with two workers running concurrently
   branch `worktree-agent-<id>` cut from the **default branch** — not from the branch the
   session has checked out. The harness removes the worktree again **only if it is
   unchanged** — see [Teardown](#teardown-is-still-the-pms-job).
-- The worktree is `locked` **only while the agent is running**; the lock is released when
-  it returns, and re-taken if it is resumed. This matters for teardown: see below.
+- The worktree is `locked` while the agent is running; the lock is normally released when
+  it returns, and re-taken if it is resumed. Normally, not always — see the 2.1.284 note
+  under [Seeing and reaping peer sessions](#seeing-and-reaping-peer-sessions) — which is why
+  every teardown uses `-f -f`.
 - The worktree and its commits **survive the agent returning**. Verified: an agent
   committed, returned, and its tree and commit were still there afterwards.
 - The completion notification carries the path: a `<worktree>` block with `worktreePath`
@@ -166,9 +168,12 @@ and the PM should believe:
   Only the `tmux` backend leaves an OS process behind; in-process peers leave none.
 
 Worktrees are the other thing that accumulates. An agent's worktree survives its
-completion **locked**, so `git worktree remove --force` is refused (`-f -f` is required)
-and removal leaves the `worktree-agent-<id>` branch behind — which is why the Stage C2
-teardown sweeps with `-f -f` and then `git branch -D`.
+completion, and removal leaves the `worktree-agent-<id>` branch behind — which is why the
+Stage C2 teardown sweeps with `-f -f` and then deletes dead harness branches. (`-f -f`
+because a lock can outlive its agent: on 2.1.284 a returned agent's tree was unlocked in
+two clean measurements, including after a `SendMessage` resume, but one tree was still
+locked right after its notification and plain `--force` was refused. A session killed
+mid-run leaves its lock too.)
 
 ## The one thing you must do yourself
 
@@ -229,20 +234,74 @@ with the `worktree` field of its verdict as the fallback source. The PM passes n
 either way.
 
 ```bash
-git worktree remove --force <path>          # at sub-merge or checkpoint, worker returned
-git branch -D worktree-agent-<id>           # the harness branch it left behind
+git worktree remove -f -f <path>            # at sub-merge or checkpoint, worker returned
+git branch -D <worktreeBranch>              # the harness branch it left behind, named in the notification
 git worktree list --porcelain               # sweep for earlier sessions' leftovers
 git worktree prune
 ```
+
+**Take the harness branch's name from the notification, never from `git worktree list`.**
+The notification's `<worktree>` block names it (`worktreeBranch`). The worker's first git
+action is `git checkout -B issue/<n>-<slug> …`, and from then on the list reports the
+issue branch; the harness branch appears nowhere in it. Measured on git 2.53: once the
+worker has checked out its issue branch, nothing references the harness branch, and
+`git branch -D` on it succeeds even while the worker's tree is live.
+
+That makes the sweep rule simple: **a `worktree-agent-*` branch that no worktree has
+checked out is dead**, whoever made it. Matching one to a batch is impossible and not
+needed. Delete them all at the batch-gate and Stop sweeps, and wherever a notification
+was never received (a stopped worker, a previous session's leftover). Prune first: a tree
+whose directory is gone still reports its path until `prune` drops it, and its branch
+would survive the sweep.
+
+```bash
+git worktree prune
+git for-each-ref --format='%(refname:lstrip=2) %(worktreepath)' 'refs/heads/worktree-agent-*' \
+  | awk '$2 == "" {print $1}' | xargs -r git branch -D
+```
+
+(`lstrip=2`, not `short`: `short` prints `heads/<name>` when a tag has the same name, and
+`git branch -D` then fails.)
+
+A worker spawned seconds ago that has not yet run its checkout still has its tree on the
+harness branch, so `%(worktreepath)` is set and the sweep keeps it.
+
+### Parked standalone worktrees
+
+A batch member parked on `needs-feedback` or `blocked` keeps its tree until the batch
+gate's sweep. A standalone or hotfix issue has no batch gate, so without a rule its tree
+waits for the Stop sweep, and a long session collects one per parked issue. Remove it
+when it parks (SKILL.md C1, `needs-feedback` and `blocked`):
+
+```bash
+[ -z "$(git -C <worktree> status --porcelain)" ] \
+  && [ "$(git -C <worktree> rev-list --count HEAD --not --remotes)" = 0 ] \
+  && git worktree remove -f -f <worktree> && git branch -D <worktreeBranch>
+```
+
+Where the answer goes depends on what happened to the tree:
+
+- **Removed** → the issue goes back to `status:ready` and Stage B spawns a **fresh**
+  worker, which continues the **published** `issue/<n>-<slug>` branch — or, when none was
+  published, resets the branch to its base. That is why removal needs both checks: it
+  would lose uncommitted edits and never-pushed commits (the second check counts commits
+  no remote-tracking ref contains).
+- **Kept** (a check failed) → `SendMessage` the answer to `worker-<n>`. Only that worker
+  can commit and push what its tree holds, and while the tree has the branch checked out a
+  fresh worker's checkout fails (`already used by worktree`). Say in the park comment that
+  the tree was kept.
+- **Kept, and the worker is gone** (a restart) → Phase 0 and the Stop sweep skip parked
+  trees and list them in the digest. Before re-spawning that issue, commit and push what
+  the tree holds from the main checkout (`git -C <tree>`), or ask the user; then remove the
+  tree and spawn fresh.
 
 Two things measured on git 2.53 that the plain `--force` form gets wrong:
 
 - **`--force` alone fails on a *locked* worktree** — `fatal: cannot remove a locked
   working tree; use 'remove -f -f' to override or unlock first`. A worker's tree is locked
-  only while it runs, so sub-merge teardown is fine, but **stopping a live worker**
-  (`collaboration.md`) or cleaning up after a session that was killed mid-run hits a
-  locked tree. Use `git worktree remove -f -f <path>` there, or `git worktree unlock`
-  first.
+  while it runs, a session killed mid-run leaves the lock, and on 2.1.284 one returned
+  agent's tree was still locked right after its notification. So every teardown in this
+  plugin uses `git worktree remove -f -f <path>`.
 - **Removing the worktree leaves the branch.** The harness's `worktree-agent-<id>` branch
   survives teardown and accumulates one dead ref per worker. Delete it with the worktree.
   The worker's own `issue/<n>-<slug>` branch is deleted by the sub-merge instead.

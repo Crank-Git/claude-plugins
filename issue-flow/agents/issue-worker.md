@@ -475,7 +475,12 @@ costs one turn and is always the cheaper error.
      still pending): that non-zero exit is the result, not a tool error to retry. On Gitea
      it resolves to the commit-anchored shell loop in
      [../references/forge.md](../references/forge.md); `no-run-registered` there means no
-     run was created (a `[skip ci]` commit), which is **not** a pass. On failure, read failing logs
+     run was created (a `[skip ci]` commit), which is **not** a pass. On GitHub the same
+     outcome is exit 1 — the code a failure also uses — with a check count of `0`
+     (`gh pr view <pr> --json statusCheckRollup --jq '.statusCheckRollup | length'`).
+     Neither is a failure to fix in code. Follow *Recovering from `no-run-registered`* in
+     forge.md; if it ends at "runner or workflow file", return `blocked` naming that —
+     substituting a local gate is the PM's call. On failure, read failing logs
      (`forge.run.log`; fan out a Sonnet child per job if many), fix in the worktree,
      push, re-watch. CI red for reasons unrelated to your change (broken on base too,
      flaky infra) → return `blocked` naming it.
