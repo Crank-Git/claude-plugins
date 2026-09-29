@@ -162,6 +162,10 @@ Two consequences the PM should treat as load-bearing:
    the peer's own transcript shows it received the task, answered in plain text, and had
    to `ToolSearch` for `SendMessage` before it could deliver anything at all.) So: spawn
    **unnamed**, or pass `name:` **with** `isolation:`. Never `name:` alone.
+   This shape exists only when the session has `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`:
+   measured on 2.1.285, the `Agent` tool's `name`, `team_name` and `mode` parameters are
+   absent without it, and a requested `name` is silently dropped. That is why issue-flow
+   addresses workers by `agentId`, which `SendMessage` accepts either way (issue #65).
    <!-- spawn-lint: ok -->
 
    This one is enforced, not just documented. The plugin ships a `PreToolUse` guard
@@ -252,8 +256,8 @@ differently:
 | `SendMessage` to the same worker | the same agent, context intact | **its own**, still pinned | already checked out |
 | a new `Agent` call | a fresh agent | a **new empty** one | default branch until it checks out |
 
-So rework goes back by `SendMessage` (name workers `worker-<issue>` at launch to keep them
-addressable). Re-spawn is the fallback for when the worker is gone — after a session
+So rework goes back by `SendMessage`, addressed by the `agentId` the spawn result returned
+(`worker-<issue>` too, where the `Agent` tool has a `name` parameter). Re-spawn is the fallback for when the worker is gone — after a session
 restart, for instance — and it needs `base: <remote>/issue/<number>-<slug>` in the brief so
 the new worker continues the published branch rather than resetting it.
 
@@ -333,7 +337,7 @@ Where the answer goes depends on what happened to the tree:
   published, resets the branch to its base. That is why removal needs both checks: it
   would lose uncommitted edits and never-pushed commits (the second check counts commits
   no remote-tracking ref contains).
-- **Kept** (a check failed) → `SendMessage` the answer to `worker-<n>`. Only that worker
+- **Kept** (a check failed) → `SendMessage` the answer to that worker (its `agentId`). Only that worker
   can commit and push what its tree holds, and while the tree has the branch checked out a
   fresh worker's checkout fails (`already used by worktree`). Say in the park comment that
   the tree was kept.

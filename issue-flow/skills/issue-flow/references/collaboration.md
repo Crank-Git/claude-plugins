@@ -78,7 +78,7 @@ even when the author is a collaborator.
 
 A comment that lands while a worker is building is worth nothing if it waits for the
 sub-merge gate — by then the wrong thing is already written, reviewed and pushed. It does
-not have to wait. `SendMessage` to `worker-<n>` is delivered to a **running** worker at its
+not have to wait. `SendMessage` to the worker's `agentId` is delivered to a **running** worker at its
 next turn boundary, without interrupting it or costing it a turn to listen (measured; see
 [worktrees.md](worktrees.md#messaging-a-worker)).
 
@@ -87,7 +87,7 @@ PM does three things, in this order:
 
 1. Update the tracker — comment, and relabel if the answer changes state. The tracker stays
    the source of truth, because the message is not durable and the worker may be replaced.
-2. `SendMessage` to `worker-<n>` with the correction: what changed, what to do differently,
+2. `SendMessage` to the worker (its `agentId`) with the correction: what changed, what to do differently,
    and whether to keep or discard work already done.
 3. Carry on. Do **not** block waiting for an acknowledgement — the worker folds it into its
    next step and reports at its verdict as usual.

@@ -7,9 +7,12 @@ to react to what it returns.
 
 ## Launch
 
-Spawn with `Agent`, `agentType: "issue-flow:issue-worker"`,
+Spawn with `Agent`, `subagent_type: "issue-flow:issue-worker"`,
 **`isolation: "worktree"`**, one per claimed issue, up to `concurrency` at once (across
-all live batches). `isolation: "worktree"` is not optional — it is what keeps concurrent
+all live batches). Keep the **`agentId`** the spawn result returns — it is the worker's
+address for everything below, for this session only. (`name: "worker-<issue>"` is an
+extra handle only where the `Agent` tool has a `name` parameter, which needs
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`.) `isolation: "worktree"` is not optional — it is what keeps concurrent
 workers apart. See [worktrees.md](worktrees.md) for what goes wrong without it.
 Sequenced batch members (dependency chains) launch only after their predecessor
 sub-merges. The PM is notified when each finishes — it does **not** sit and wait.
@@ -98,10 +101,11 @@ Several gates send an issue **back to the worker** — an unevidenced criterion,
 practice, a review comment, a conflict to resolve. Two mechanisms, and they are not
 equivalent:
 
-- **Preferred — `SendMessage` to the worker that returned the verdict** (by its agent id
-  or name). It keeps its context, its per-agent worktree, and its branch already checked
-  out, so nothing is re-pointed and nothing can be lost. Name workers predictably at
-  launch (`worker-<issue>`) so they stay addressable.
+- **Preferred — `SendMessage` to the worker that returned the verdict**, by the
+  `agentId` from its spawn result (or `worker-<issue>` where names exist). It keeps its
+  context, its per-agent worktree, and its branch already checked out, so nothing is
+  re-pointed and nothing can be lost. Measured with the teams flag unset: a returned
+  isolated worker resumed by `agentId` answered from its original context.
 - **Fallback — re-spawn**, when the worker is gone (session restarted, or it is no longer
   addressable). A re-spawn is a **new agent in a new empty worktree on the default
   branch**, so the brief must carry `base: <remote>/issue/<number>-<slug>` — the published
