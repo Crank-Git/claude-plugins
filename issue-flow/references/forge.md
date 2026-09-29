@@ -144,7 +144,7 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 | `forge.pr.create.draft` | `gh pr create --draft --base <base> --title "<t>" --body "<b>"` | `tea pr create --draft --base <base> --title "<t>" --description "<b>"` | `pull_request_write(method: "create", draft: true)` |
 | `forge.pr.create` | `gh pr create --base <base> --title "<t>" --body "<b>"` | `tea pr create --base <base> --title "<t>" --description "<b>"` | `pull_request_write(method: "create")` |
 | `forge.pr.ready` | `gh pr ready <pr>` | `tea pr edit <pr> --ready` | `pull_request_write(method: "update", title)` — strip `WIP: ` |
-| `forge.pr.view` | `gh pr view <pr> --json state,reviews,mergeable` | `tea pr list --output json`, or `tea api /repos/{owner}/{repo}/pulls/<pr>` | `pull_request_read` |
+| `forge.pr.view` | `gh pr view <pr> --json state,reviews,mergeable` | `tea api /repos/{owner}/{repo}/pulls/<pr>` (by number; by branch, see below) | `pull_request_read` |
 | `forge.pr.diff` | `gh pr diff <pr>` | `tea api /repos/{owner}/{repo}/pulls/<pr>.diff` | `pull_request_read` |
 | `forge.pr.reviewer.add` | `gh pr edit <pr> --add-reviewer <user>` | `tea pr edit <pr> --add-reviewers <user>` | `pull_request_write(method: "add_reviewers")` |
 | `forge.pr.thread.resolve` | `gh api graphql` with the `resolveReviewThread` mutation | `tea pr resolve <comment-id>` | `pull_request_review_write(method: "resolve_thread")` |
@@ -156,18 +156,51 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 the branch afterwards) — see *Never let a merge write its own commit message* below. The
 default message decides whether the merged-into branch runs CI, and it differs per forge.
 
-**`forge.pr.view` by *branch* is GitHub-only.** `gh pr view <branch>` resolves a branch
-name as readily as a number; no `tea` command and no Gitea endpoint does. A replacement
-worker adopting an already-open PR (the routine path after a `checkpoint`) therefore lists
-and filters on the head ref:
+**`forge.pr.view` by *branch* needs a list, not a view — on both forges.** A replacement
+worker adopting an already-open PR (the routine path after a `checkpoint`) looks the PR up
+by its head ref. Measured on gh 2.88.1, Gitea 1.25.3 and tea 0.15.1:
 
-```bash
-tea api "/repos/{owner}/{repo}/pulls?state=open" \
-  | jq -r '.[] | select(.head.ref == "issue/<n>-<slug>") | .number'
-```
+- **GitHub:** `gh pr view <branch>` resolves a branch, but it returns a PR for that branch
+  **whatever its state** — a closed or merged PR comes back with exit 0 — and it exits 1
+  both for "no PR" and for a real failure. List open PRs by head instead; empty output is
+  the "none" answer and a non-zero exit is an error:
 
-Empty output means no PR is open for that branch — open one. More than one line is a bug
-worth stopping on, not a pick-the-first situation.
+  ```bash
+  gh pr list --head "issue/<n>-<slug>" --state open --json number --jq '.[].number'
+  ```
+
+- **Gitea:** the list endpoint ignores `head=` and returns one page per call —
+  `default_paging_num` 30, `limit` capped at `max_response_items` 50 (`/api/v1/settings/api`
+  reports both). An unpaged call therefore misses every PR past the first page and reports
+  "none" while one is open: measured with 55 open PRs, the oldest branch's PR was not found.
+  `tea api` also exits 0 on an API error and prints the error object, so check the shape.
+  Page until an empty page — a short page is not proof of the end, because the cap is
+  per-server:
+
+  ```bash
+  page=1
+  while :; do
+    batch=$(tea api "/repos/{owner}/{repo}/pulls?state=open&limit=50&page=$page") || exit 1
+    printf '%s' "$batch" | jq -e 'type == "array"' >/dev/null \
+      || { printf '%s\n' "$batch" >&2; exit 1; }
+    [ "$(printf '%s' "$batch" | jq length)" -eq 0 ] && break
+    printf '%s' "$batch" | jq -r --arg b "issue/<n>-<slug>" '.[] | select(.head.ref == $b) | .number'
+    page=$((page + 1))
+  done
+  ```
+
+  `GET /repos/{owner}/{repo}/pulls/{base}/{head}` does exist and answers directly, but it
+  needs the PR's base — and a replacement worker's brief carries `base:
+  <remote>/issue/<n>-<slug>`, not the integration branch the PR targets.
+
+Read the result the same way on both forges:
+
+- **Empty output, exit 0:** no PR is open for that branch. Run the lookup once more before
+  you act on it. Gitea pages by offset, so a PR closed on an earlier page during the scan
+  shifts a later PR onto a page already read — measured: closing PR #50 between page 1
+  and page 2 made page 2 skip PR #5.
+- **A non-zero exit:** the lookup failed. It never means "none".
+- **More than one line:** a bug worth stopping on, not a pick-the-first situation.
 
 **Draft pull requests on Gitea are a title prefix.** `tea pr create --draft` prepends
 `WIP: `, and Gitea treats a WIP-prefixed pull request as a draft. `tea pr edit --draft`
@@ -290,17 +323,23 @@ use it, and they use it the same way:
    below) with `run_in_background: true`. Do not pass a `timeout`; do not `sleep` in the
    foreground waiting on it. The tool result carries the **path to the shell's output
    file** — keep it; that file is where the verdict lands.
-2. **Stay alive until that shell exits.** Do other in-scope work if you have any;
-   otherwise simply wait for the completion notification, which carries the same output
-   path.
+2. **Wait for that shell to exit.** Do other in-scope work if you have any; otherwise end
+   your turn. The harness wakes you when the shell exits, and the notification carries
+   the same output path.
 3. Read the output file, take the one-line verdict, and only then act on it or return it.
 
-**Do not return before the shell exits.** Both waiting paths run inside subagents, and a
-subagent's final text *is* its return — emitting it ends the agent, and an agent that has
-ended is never re-invoked when its background shell finishes. The verdict is then lost in
-exactly the way a killed foreground call loses it, so backgrounding buys nothing. Emit no
-verdict, no partial verdict and no "watching…" progress note until you have read the
-finished shell's output. A watch you launched and walked away from is not a watch.
+**A subagent must not return its verdict before the shell exits.** This applies to the
+worker watching its own CI. The PM's deploy watch runs on the main thread and returns no
+verdict. A subagent's final text *is* its return, and a guess sent before the shell
+exits is a verdict nobody tested. Measured on Claude Code 2.1.284: a subagent that ends its turn
+while its background shell runs is woken when the shell exits, and its next reply
+becomes its result. But the harness also notifies the caller at once, marked interim
+("stopped with background work of its own still running"), carrying whatever the
+subagent last said. So end that turn with a one-line status that cannot be read as a
+verdict — `waiting on CI for PR #<n>` — and send the verdict only after reading the
+finished shell's output. The PM ignores the interim notification (SKILL.md, *Reading a
+worker notification*). A watch
+you launched and walked away from is not a watch.
 
 The loop's own `sleep` interval and iteration count are unchanged — they bound the *watch*,
 not the tool call, and `maxMinutes` may now exceed ten because nothing kills it at ten.

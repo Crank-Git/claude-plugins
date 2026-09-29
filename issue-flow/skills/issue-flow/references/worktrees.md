@@ -90,6 +90,32 @@ Verified by direct measurement on 2.1.224, with two workers running concurrently
 - A child agent spawned with no `isolation` parameter ran in its parent's worktree, on
   the parent's branch, and could write there.
 
+Measured on 2.1.284 (isolated parents; unnamed un-isolated children that slept 20, 50 and
+60 s; a background `Bash` that slept 40 s):
+
+- **The scratchpad is not isolated.** The parent and its child both reported the
+  session's own scratchpad path — the same one the PM sees. Worktree isolation covers the
+  checkout, not scratch files, so the worker makes its own directory under it
+  (`agents/issue-worker.md`, Worktree boundary).
+- **The scratchpad is writable from an isolated agent.** `Write` into it and a bare
+  `mktemp -d` both succeeded.
+- **A parent's completion waits for its children.** The parent sent its final reply
+  five seconds in; its completion notification fired only after the child finished a
+  minute later. With two children, it was woken once per child as each finished, and
+  one notification fired, after the last.
+- **The late child result replaces the parent's answer.** The harness woke the parent
+  with the child's result, the parent replied again, and that second reply is what the
+  notification carried — the first final reply never reached the caller. This is why a
+  worker must not send its verdict while a child is running (`agents/issue-worker.md`,
+  hard rule 4).
+- **A background shell does not hold the completion.** An agent that ended its turn with
+  a background `Bash` still running notified at once, marked interim ("stopped with
+  background work of its own still running"). It was woken when the shell exited, and a
+  second notification carried its new reply. So a worker waiting on its CI watch produces
+  an interim notification the PM must not read as a verdict (SKILL.md, *Reading a worker
+  notification*). This replaces
+  the earlier note that an ended worker is never re-invoked when its watch finishes.
+
 ## Messaging a worker
 
 A worker does not have to finish before the PM can tell it something. Measured directly on
