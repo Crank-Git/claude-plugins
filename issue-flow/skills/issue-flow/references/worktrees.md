@@ -174,10 +174,12 @@ Two consequences the PM should treat as load-bearing:
    (SKILL.md Stage B step 5), under its own switch, `ISSUE_FLOW_FORK_GUARD`, so turning
    named peers back on does not turn fork dispatch back on.
 2. **Unnamed un-isolated helpers are reachable and do notify.** `code-auditor`,
-   `ux-explorer`, `deploy-verifier` and `review-scribe` are spawned without isolation and
+   `ux-explorer` and `deploy-verifier` are spawned without isolation and
    are *not* peer sessions: they fire completion notifications and they accept a mid-run
    `SendMessage` addressed by `agentId`. What they lack is a stable name, so keep the
-   `agentId` from the spawn result if you intend to push anything to them. (Stage D's
+   `agentId` from the spawn result if you intend to push anything to them.
+   `review-scribe` is spawned unnamed **with** isolation — it writes a branch, so it gets
+   its own tree like a worker (`project-review` Phase 4) — and notifies the same way. (Stage D's
    deploy watch is a background `Bash` command, not an agent — `run_in_background: true`
    stays correct there.)
 

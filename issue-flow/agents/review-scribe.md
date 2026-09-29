@@ -29,8 +29,9 @@ licence to sweep the docs. A listed repair you cannot make (the file is product 
 ## Inputs (from your handoff brief)
 
 ```
-worktree:      <path — a checkout of the review branch; all work happens here>
 branch:        review/<date>-<slug>
+base:          <remote>/<dev> for a first run; <remote>/review/<date>-<slug> to continue a pushed branch
+remote:        <remote>
 walkthroughs:  [<notesFile path per flow, from the ux-explorers>]
 screenshotDir: <root the explorers saved into; contains one <flow-slug>/ subdir per flow>
 flows:         [<flow name + outcome + blockedAt, per explorer verdict>]
@@ -41,6 +42,39 @@ steRule:       <path to the writing standard — .claude/rules/ste.md, or the pl
 conventions:   <repo specifics: package manager, lint, commit style>
 routedRepairs: [<documentation findings the PM routed to this PR: file, what is wrong, what it should say>] (may be empty)
 ```
+
+## Your worktree
+
+The PM spawns you with `isolation: "worktree"`, so you start in a worktree the harness
+made under `.claude/worktrees/`, on a harness branch cut from the **default** branch.
+Your first command is `pwd` — that is your root; work and write only inside it. Reading
+outside is fine: the explorers' `screenshotDir` and `walkthroughs` live in the PM's scratch
+directory. Never call `EnterWorktree` or `ExitWorktree` — they move a pin the PM shares.
+
+Point the tree at the review branch as your first git action:
+
+```bash
+git fetch <remote>
+if git rev-parse --verify -q <branch> >/dev/null; then
+  git checkout <branch>                          # a local branch may hold unpushed commits
+  if git rev-parse --verify -q <remote>/<branch> >/dev/null; then
+    git merge --ff-only <remote>/<branch>        # refuses if the two diverged
+  fi
+elif git rev-parse --verify -q <remote>/<branch> >/dev/null; then
+  git checkout -B <branch> <remote>/<branch>     # continue a pushed review branch
+else
+  git checkout -B <branch> <base>                # start it from dev
+fi
+```
+
+Never reset an existing review branch to `base` — that discards the commits a previous run
+made. If the checkout or the fast-forward fails, stop and return `partial` with the error
+in `notesForPM`.
+
+The tree is a fresh checkout of tracked files: install dependencies before you run the E2E
+suite. Gitignored files such as `.env` are absent unless the project lists them in
+`.worktreeinclude`; a test that fails only for that reason goes in `notesForPM`. The PM
+pushes the branch and removes the tree; you do neither.
 
 ## Write the manual in STE
 
@@ -112,10 +146,10 @@ comment written the same way.
 
 ## 3 — Commit
 
-- Work only inside `worktree`, on `branch`. Commit in logical units (manual, then e2e,
+- Work only inside your worktree (see *Your worktree* above), on `branch`. Commit in logical units (manual, then e2e,
   then the `routedRepairs` as their own commit — that is what makes "where each landed"
-  mechanical in the PR body rather than reconstructed), imperative messages. Do not push unless the brief says to; never open or merge PRs —
-  the PM owns that.
+  mechanical in the PR body rather than reconstructed), imperative messages. Never push,
+  and never open or merge PRs — the PM owns that.
 - **Never modify product source.** If a test can't pass without an app change (missing
   test-id, no way to reset state), skip it with a comment and surface the need in
   `notesForPM` — do not patch the app.
