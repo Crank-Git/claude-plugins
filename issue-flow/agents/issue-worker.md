@@ -459,8 +459,9 @@ costs one turn and is always the cheaper error.
    Otherwise open one targeting the base from your brief — **never dev/live directly when
    you are a batch member.** `ci: skip` → open it as a **draft**
    (`forge.pr.create.draft` — on Gitea the title starts with `WIP: `, which is how Gitea
-   marks a draft). Write the body to a file in your scratch directory first and pass the
-   file (`forge.md`, *Bodies go through a file*): an inline body is corrupted by its own
+   marks a draft). Write the body to a file in your scratch directory with the `Write`
+   tool — not a shell heredoc, which the worktree guard refuses too — and pass the file
+   (`forge.md`, *Bodies go through a file*): an inline body is corrupted by its own
    backticks, and the worktree guard can refuse it.
    Imperative title; body covering what/why/how-tested, referencing `#<number>` (do
    **not** write `Closes #` — issues close via the batch PR, which the PM owns; write it

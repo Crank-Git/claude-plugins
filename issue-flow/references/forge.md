@@ -154,7 +154,8 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 
 **Bodies go through a file** — PR bodies and comments (`forge.pr.create*`,
 `forge.issue.comment`). Write the text with the `Write` tool (a worker writes it in its own
-scratch directory), then pass the path. Two reasons, both measured:
+scratch directory; a `cat > file <<EOF` heredoc carrying the body was refused by the
+worktree guard in a dogfood run), then pass the path. Two reasons, both measured:
 
 - Backticks inside a double-quoted `--body "…"` / `--description "…"` run as command
   substitution before the forge sees the text, so `` `tally --x` `` silently becomes
