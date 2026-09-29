@@ -47,10 +47,12 @@ so they fork the **updated** integration branch and never conflict with it.
 Teardown: member branches are deleted at sub-merge (`--delete-branch`); the integration
 branch is deleted at batch merge. A worker's worktree always holds commits, so the harness
 never auto-removes it — the PM removes the path from the worker's completion notification
-(`worktreePath`, or its verdict) at sub-merge (`git worktree remove --force`, plus
-`git branch -D worktree-agent-<id>` for the branch the removal leaves) and sweeps
-`git worktree list --porcelain` at batch merge, removing leftovers with `-f -f` because a
-killed session leaves them locked, then `git worktree prune`.
+(`worktreePath`, or its verdict) at sub-merge (`git worktree remove -f -f`, plus
+`git branch -D` the notification's `worktreeBranch` for the branch the removal leaves) and
+sweeps `git worktree list --porcelain` at batch merge, removing leftovers with `-f -f`
+because a killed session leaves them locked, then `git worktree prune`, then deleting
+every `worktree-agent-*` branch no worktree has checked out
+([worktrees.md](worktrees.md#teardown-is-still-the-pms-job)).
 
 **"An integration-branch worktree" below always means one of two things**, never
 `EnterWorktree`: for the PM's own sequential work (local sub-merges, the empty CI commit)
@@ -109,7 +111,7 @@ Push it if either is true:
   the sibling that was already building rediscovered the identical wall minutes later,
   because nobody pushed it.
 
-Push by `SendMessage` to that `worker-<n>`, with the finding quoted and what to do about it —
+Push by `SendMessage` to that worker (its `agentId`), with the finding quoted and what to do about it —
 delivery to a running worker is measured and costs it no turn (see
 [worktrees.md](worktrees.md#messaging-a-worker) and the correction path in
 [collaboration.md](collaboration.md#corrections-reach-work-in-flight)). The PM decides
@@ -204,9 +206,9 @@ unchanged.
 4. Member → `forge.issue.status.set <m> status:batched`, which **removes `status:in-review`
    in the same operation** (at most one `status:` label per issue — a bare
    `forge.issue.label.add` leaves it in two states and breaks status queries); tick the
-   tracking checklist; `git worktree remove --force`
+   tracking checklist; `git worktree remove -f -f`
    the path from the worker's completion notification (or its verdict) and `git branch -D`
-   its `worktree-agent-<id>`; launch any sequenced successor. Anything sent back
+   its `worktreeBranch` from the same notification; launch any sequenced successor. Anything sent back
    to the worker instead goes by `SendMessage` — see
    [issue-worker.md](issue-worker.md#rework-message-the-same-worker-dont-spawn-a-new-one).
 
@@ -235,14 +237,16 @@ Batch complete = every member `status:batched` or terminally parked.
    empty pipe reads as a clean message): a token in the message → push one clean
    subject-only trigger and re-watch; a clean message → re-poll the run list for that SHA
    once after another 60–120 seconds (a slow self-hosted runner registering after the
-   60-second window is the usual cause) and only then call it a runner or workflow
-   problem, which a re-push does not fix. **Repeat this step after every later push to the integration branch** —
+   60-second window is the usual cause), then read the PR — on GitHub a `CONFLICTING` PR,
+   a base changed after opening, or a conflict cleared from the base side registers no
+   run (resolve the conflict, or close and reopen; [forge.md](../../../references/forge.md))
+   — and only then call it a runner or workflow problem, which a re-push does not fix. **Repeat this step after every later push to the integration branch** —
    a late member's sub-merge writes a new head carrying the token (sub-merge step 3) and
    quietly suppresses the run again.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
    cross-member integration problems (interface drift between members, duplicate
    migrations, conflicting config). Cheap — no CI involved.
-4. CI failure → fix worker, `isolation: "worktree"` with `base: <remote>/<integration-branch>`; interim commits may
+4. CI failure → fix worker, `isolation: "worktree"` with `base: <remote>/<integration-branch>` (it watches CI, so it can send an interim notification first — SKILL.md, *Reading a worker notification*); interim commits may
    `[skip ci]`; final push re-runs CI. CI red for pre-existing/base reasons → `blocked`.
 5. Conflict vs dev (another batch landed first) → resolve once here; semantic → park.
 6. Merge `--merge` (preserves per-member squashed commits; `--squash` only if the

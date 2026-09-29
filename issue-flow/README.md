@@ -319,7 +319,7 @@ promotion from `dev` to the live branch.
 ## The loop, in prose
 
 1. **Preflight.** A `SessionStart` hook has already fetched the remote and handed the PM
-   the mechanical facts — branches, leftover worktrees, missing labels, open PRs — in a
+   the mechanical facts — branches, earlier sessions' worktrees, missing labels, open PRs — in a
    repository that carries `.issue-flow.json`; the PM verifies instead of re-deriving.
    Check the repository, the remote and the labels. Check the foundation —
    an empty repository gets Epic 0 first, never a feature issue. Read the branch model

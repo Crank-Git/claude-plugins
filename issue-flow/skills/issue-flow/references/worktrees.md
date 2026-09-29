@@ -65,8 +65,10 @@ Verified by direct measurement on 2.1.224, with two workers running concurrently
   branch `worktree-agent-<id>` cut from the **default branch** — not from the branch the
   session has checked out. The harness removes the worktree again **only if it is
   unchanged** — see [Teardown](#teardown-is-still-the-pms-job).
-- The worktree is `locked` **only while the agent is running**; the lock is released when
-  it returns, and re-taken if it is resumed. This matters for teardown: see below.
+- The worktree is `locked` while the agent is running; the lock is normally released when
+  it returns, and re-taken if it is resumed. Normally, not always — see the 2.1.284 note
+  under [Seeing and reaping peer sessions](#seeing-and-reaping-peer-sessions) — which is why
+  every teardown uses `-f -f`.
 - The worktree and its commits **survive the agent returning**. Verified: an agent
   committed, returned, and its tree and commit were still there afterwards.
 - The completion notification carries the path: a `<worktree>` block with `worktreePath`
@@ -89,6 +91,48 @@ Verified by direct measurement on 2.1.224, with two workers running concurrently
   wording. Cross-worktree writes stay blocked; that is the guard working as intended.
 - A child agent spawned with no `isolation` parameter ran in its parent's worktree, on
   the parent's branch, and could write there.
+
+Measured on 2.1.284 (isolated parents; unnamed un-isolated children that slept 20, 50 and
+60 s; a background `Bash` that slept 40 s):
+
+- **The scratchpad is not isolated.** The parent and its child both reported the
+  session's own scratchpad path — the same one the PM sees. Worktree isolation covers the
+  checkout, not scratch files, so the worker makes its own directory under it
+  (`agents/issue-worker.md`, Worktree boundary).
+- **The scratchpad is writable from an isolated agent.** `Write` into it and a bare
+  `mktemp -d` both succeeded.
+- **A parent's completion waits for its children.** The parent sent its final reply
+  five seconds in; its completion notification fired only after the child finished a
+  minute later. With two children, it was woken once per child as each finished, and
+  one notification fired, after the last.
+- **The late child result replaces the parent's answer.** The harness woke the parent
+  with the child's result, the parent replied again, and that second reply is what the
+  notification carried — the first final reply never reached the caller. This is why a
+  worker must not send its verdict while a child is running (`agents/issue-worker.md`,
+  hard rule 4).
+- **A background shell does not hold the completion.** An agent that ended its turn with
+  a background `Bash` still running notified at once, marked interim ("stopped with
+  background work of its own still running"). It was woken when the shell exited, and a
+  second notification carried its new reply. So a worker waiting on its CI watch produces
+  an interim notification the PM must not read as a verdict (SKILL.md, *Reading a worker
+  notification*). This replaces
+  the earlier note that an ended worker is never re-invoked when its watch finishes.
+- **The worktree guard reads every `Bash` command an isolated agent runs, and refuses
+  what it cannot prove stays in the tree.** Measured with no user hooks
+  (`--setting-sources project,local`), one command per call:
+
+  | Allowed | Refused |
+  |---|---|
+  | plain `git …`, `&&` / `;` chains, `git` inside `if` | `$(git …)` anywhere, e.g. `base=$(git merge-base …)` |
+  | `cd <own root> \|\| exit 1; …`, `git -C <own root>` | `cd` into the shared checkout, `git -C <shared checkout>` |
+  | literal `tea api '…' \| jq …`, also inside `for` | `tea` with a URL built at runtime (`page=$page`), or inside `$(…)` or a `while` loop |
+  | `git checkout <sha> -- <paths>`, `bash <script>`, `rm` (even outside the tree) | a `trap '…'` string |
+
+  A `PreToolUse` hook that rewrites commands changes what the guard sees. With a hook
+  that turns every `git …` into `<wrapper> git …`, every `git` call a worker made was
+  refused ("runs <wrapper> with a git command among its operands"), and one worker could
+  only proceed through `/usr/bin/git`. The runbook forms in `agents/issue-worker.md` are
+  the allowed shapes; the PM runs on the main thread and is not guarded this way.
 
 ## Messaging a worker
 
@@ -118,6 +162,10 @@ Two consequences the PM should treat as load-bearing:
    the peer's own transcript shows it received the task, answered in plain text, and had
    to `ToolSearch` for `SendMessage` before it could deliver anything at all.) So: spawn
    **unnamed**, or pass `name:` **with** `isolation:`. Never `name:` alone.
+   This shape exists only when the session has `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`:
+   measured on 2.1.285, the `Agent` tool's `name`, `team_name` and `mode` parameters are
+   absent without it, and a requested `name` is silently dropped. That is why issue-flow
+   addresses workers by `agentId`, which `SendMessage` accepts either way (issue #65).
    <!-- spawn-lint: ok -->
 
    This one is enforced, not just documented. The plugin ships a `PreToolUse` guard
@@ -127,12 +175,17 @@ Two consequences the PM should treat as load-bearing:
    environment **at session start**: put `"env": {"ISSUE_FLOW_SPAWN_GUARD": "off"}` in a
    project's `.claude/settings.json` where named peer sessions are wanted deliberately
    (exporting it from a tool call does nothing). `ask` exists but is interactive-only —
-   a background agent hangs on the prompt, which is worse than the refusal.
+   a background agent hangs on the prompt, which is worse than the refusal. The same
+   hook also denies a `subagent_type: "fork"` spawn that carries the handoff brief
+   (SKILL.md Stage B step 5), under its own switch, `ISSUE_FLOW_FORK_GUARD`, so turning
+   named peers back on does not turn fork dispatch back on.
 2. **Unnamed un-isolated helpers are reachable and do notify.** `code-auditor`,
-   `ux-explorer`, `deploy-verifier` and `review-scribe` are spawned without isolation and
+   `ux-explorer` and `deploy-verifier` are spawned without isolation and
    are *not* peer sessions: they fire completion notifications and they accept a mid-run
    `SendMessage` addressed by `agentId`. What they lack is a stable name, so keep the
-   `agentId` from the spawn result if you intend to push anything to them. (Stage D's
+   `agentId` from the spawn result if you intend to push anything to them.
+   `review-scribe` is spawned unnamed **with** isolation — it writes a branch, so it gets
+   its own tree like a worker (`project-review` Phase 4) — and notifies the same way. (Stage D's
    deploy watch is a background `Bash` command, not an agent — `run_in_background: true`
    stays correct there.)
 
@@ -166,9 +219,12 @@ and the PM should believe:
   Only the `tmux` backend leaves an OS process behind; in-process peers leave none.
 
 Worktrees are the other thing that accumulates. An agent's worktree survives its
-completion **locked**, so `git worktree remove --force` is refused (`-f -f` is required)
-and removal leaves the `worktree-agent-<id>` branch behind — which is why the Stage C2
-teardown sweeps with `-f -f` and then `git branch -D`.
+completion, and removal leaves the `worktree-agent-<id>` branch behind — which is why the
+Stage C2 teardown sweeps with `-f -f` and then deletes dead harness branches. (`-f -f`
+because a lock can outlive its agent: on 2.1.284 a returned agent's tree was unlocked in
+two clean measurements, including after a `SendMessage` resume, but one tree was still
+locked right after its notification and plain `--force` was refused. A session killed
+mid-run leaves its lock too.)
 
 ## The one thing you must do yourself
 
@@ -200,8 +256,8 @@ differently:
 | `SendMessage` to the same worker | the same agent, context intact | **its own**, still pinned | already checked out |
 | a new `Agent` call | a fresh agent | a **new empty** one | default branch until it checks out |
 
-So rework goes back by `SendMessage` (name workers `worker-<issue>` at launch to keep them
-addressable). Re-spawn is the fallback for when the worker is gone — after a session
+So rework goes back by `SendMessage`, addressed by the `agentId` the spawn result returned
+(`worker-<issue>` too, where the `Agent` tool has a `name` parameter). Re-spawn is the fallback for when the worker is gone — after a session
 restart, for instance — and it needs `base: <remote>/issue/<number>-<slug>` in the brief so
 the new worker continues the published branch rather than resetting it.
 
@@ -229,20 +285,74 @@ with the `worktree` field of its verdict as the fallback source. The PM passes n
 either way.
 
 ```bash
-git worktree remove --force <path>          # at sub-merge or checkpoint, worker returned
-git branch -D worktree-agent-<id>           # the harness branch it left behind
+git worktree remove -f -f <path>            # at sub-merge or checkpoint, worker returned
+git branch -D <worktreeBranch>              # the harness branch it left behind, named in the notification
 git worktree list --porcelain               # sweep for earlier sessions' leftovers
 git worktree prune
 ```
+
+**Take the harness branch's name from the notification, never from `git worktree list`.**
+The notification's `<worktree>` block names it (`worktreeBranch`). The worker's first git
+action is `git checkout -B issue/<n>-<slug> …`, and from then on the list reports the
+issue branch; the harness branch appears nowhere in it. Measured on git 2.53: once the
+worker has checked out its issue branch, nothing references the harness branch, and
+`git branch -D` on it succeeds even while the worker's tree is live.
+
+That makes the sweep rule simple: **a `worktree-agent-*` branch that no worktree has
+checked out is dead**, whoever made it. Matching one to a batch is impossible and not
+needed. Delete them all at the batch-gate and Stop sweeps, and wherever a notification
+was never received (a stopped worker, a previous session's leftover). Prune first: a tree
+whose directory is gone still reports its path until `prune` drops it, and its branch
+would survive the sweep.
+
+```bash
+git worktree prune
+git for-each-ref --format='%(refname:lstrip=2) %(worktreepath)' 'refs/heads/worktree-agent-*' \
+  | awk '$2 == "" {print $1}' | xargs -r git branch -D
+```
+
+(`lstrip=2`, not `short`: `short` prints `heads/<name>` when a tag has the same name, and
+`git branch -D` then fails.)
+
+A worker spawned seconds ago that has not yet run its checkout still has its tree on the
+harness branch, so `%(worktreepath)` is set and the sweep keeps it.
+
+### Parked standalone worktrees
+
+A batch member parked on `needs-feedback` or `blocked` keeps its tree until the batch
+gate's sweep. A standalone or hotfix issue has no batch gate, so without a rule its tree
+waits for the Stop sweep, and a long session collects one per parked issue. Remove it
+when it parks (SKILL.md C1, `needs-feedback` and `blocked`):
+
+```bash
+[ -z "$(git -C <worktree> status --porcelain)" ] \
+  && [ "$(git -C <worktree> rev-list --count HEAD --not --remotes)" = 0 ] \
+  && git worktree remove -f -f <worktree> && git branch -D <worktreeBranch>
+```
+
+Where the answer goes depends on what happened to the tree:
+
+- **Removed** → the issue goes back to `status:ready` and Stage B spawns a **fresh**
+  worker, which continues the **published** `issue/<n>-<slug>` branch — or, when none was
+  published, resets the branch to its base. That is why removal needs both checks: it
+  would lose uncommitted edits and never-pushed commits (the second check counts commits
+  no remote-tracking ref contains).
+- **Kept** (a check failed) → `SendMessage` the answer to that worker (its `agentId`). Only that worker
+  can commit and push what its tree holds, and while the tree has the branch checked out a
+  fresh worker's checkout fails (`already used by worktree`). Say in the park comment that
+  the tree was kept.
+- **Kept, and the worker is gone** (a restart) → Phase 0 and the Stop sweep skip parked
+  trees and list them in the digest. Before re-spawning that issue, commit and push what
+  the tree holds from the main checkout (`git -C <tree>`), or ask the user; then remove the
+  tree and spawn fresh.
 
 Two things measured on git 2.53 that the plain `--force` form gets wrong:
 
 - **`--force` alone fails on a *locked* worktree** — `fatal: cannot remove a locked
   working tree; use 'remove -f -f' to override or unlock first`. A worker's tree is locked
-  only while it runs, so sub-merge teardown is fine, but **stopping a live worker**
-  (`collaboration.md`) or cleaning up after a session that was killed mid-run hits a
-  locked tree. Use `git worktree remove -f -f <path>` there, or `git worktree unlock`
-  first.
+  while it runs, a session killed mid-run leaves the lock, and on 2.1.284 one returned
+  agent's tree was still locked right after its notification. So every teardown in this
+  plugin uses `git worktree remove -f -f <path>`.
 - **Removing the worktree leaves the branch.** The harness's `worktree-agent-<id>` branch
   survives teardown and accumulates one dead ref per worker. Delete it with the worktree.
   The worker's own `issue/<n>-<slug>` branch is deleted by the sub-merge instead.

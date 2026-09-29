@@ -77,11 +77,13 @@ from the worker's completion notification (`worktreePath`) or its verdict, and s
 leftovers from earlier sessions:
 
 ```bash
-git worktree remove --force <path from the completion notification>  # after the branch is merged/deleted
-git branch -D worktree-agent-<id>                                   # the harness branch the removal leaves
+git worktree remove -f -f <path from the completion notification>   # after the branch is merged/deleted
+git branch -D <worktreeBranch from the notification>                # the harness branch the removal leaves
 git worktree list --porcelain                                       # leftovers on issue/* branches
 git worktree remove -f -f <leftover>                                # -f -f: a killed session leaves the lock
 git worktree prune
+git for-each-ref --format='%(refname:lstrip=2) %(worktreepath)' 'refs/heads/worktree-agent-*' \
+  | awk '$2 == "" {print $1}' | xargs -r git branch -D              # dead harness branches (worktrees.md)
 ```
 
 **Two different issues touching the same files is allowed and expected.** Their edits

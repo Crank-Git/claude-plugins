@@ -108,7 +108,7 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 | `forge.issue.label.remove` | `gh issue edit <n> --remove-label "<l>"` | `tea issues edit <n> --remove-labels "<l>"` | `issue_write(method: "remove_label")` — **ID** |
 | `forge.issue.status.set` | `gh issue edit <n> --add-label "<new>" --remove-label "<old>"` | `tea issues edit <n> --add-labels "<new>" --remove-labels "<old>"` | `issue_write(method: "add_labels")` **then** `issue_write(method: "remove_label")` |
 | `forge.issue.assign` | `gh issue edit <n> --add-assignee @me` | `tea issues edit <n> --set-assignees <me>` | `issue_write(method: "update", assignees)` |
-| `forge.issue.comment` | `gh issue comment <n> --body "<b>"` | `tea comments <n> "<b>"` | `issue_write(method: "add_comment")` |
+| `forge.issue.comment` | `gh issue comment <n> --body-file <path>` | `tea api -X POST /repos/{owner}/{repo}/issues/<n>/comments --data @<json>` (`{"body": …}`) | `issue_write(method: "add_comment")` |
 | `forge.issue.edit.body` | `gh issue edit <n> --body "<b>"` | `tea issues edit <n> --description "<b>"` | `issue_write(method: "update", body)` |
 | `forge.issue.close` | `gh issue close <n>` | `tea issues close <n>` | `issue_write(method: "update", state: "closed")` |
 
@@ -141,10 +141,10 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 
 | Operation | GitHub (`gh`) | Gitea (`tea`) | Gitea MCP |
 |---|---|---|---|
-| `forge.pr.create.draft` | `gh pr create --draft --base <base> --title "<t>" --body "<b>"` | `tea pr create --draft --base <base> --title "<t>" --description "<b>"` | `pull_request_write(method: "create", draft: true)` |
-| `forge.pr.create` | `gh pr create --base <base> --title "<t>" --body "<b>"` | `tea pr create --base <base> --title "<t>" --description "<b>"` | `pull_request_write(method: "create")` |
+| `forge.pr.create.draft` | `gh pr create --draft --base <base> --title "<t>" --body-file <path>` | `tea api -X POST /repos/{owner}/{repo}/pulls --data @<json>` (`{"title": "WIP: <t>", "head": …, "base": …, "body": …}`) | `pull_request_write(method: "create", draft: true)` |
+| `forge.pr.create` | `gh pr create --base <base> --title "<t>" --body-file <path>` | `tea api -X POST /repos/{owner}/{repo}/pulls --data @<json>` (`{"title", "head", "base", "body"}`) | `pull_request_write(method: "create")` |
 | `forge.pr.ready` | `gh pr ready <pr>` | `tea pr edit <pr> --ready` | `pull_request_write(method: "update", title)` — strip `WIP: ` |
-| `forge.pr.view` | `gh pr view <pr> --json state,reviews,mergeable` | `tea pr list --output json`, or `tea api /repos/{owner}/{repo}/pulls/<pr>` | `pull_request_read` |
+| `forge.pr.view` | `gh pr view <pr> --json state,reviews,mergeable` | `tea api /repos/{owner}/{repo}/pulls/<pr>` (by number; by branch, see below) | `pull_request_read` |
 | `forge.pr.diff` | `gh pr diff <pr>` | `tea api /repos/{owner}/{repo}/pulls/<pr>.diff` | `pull_request_read` |
 | `forge.pr.reviewer.add` | `gh pr edit <pr> --add-reviewer <user>` | `tea pr edit <pr> --add-reviewers <user>` | `pull_request_write(method: "add_reviewers")` |
 | `forge.pr.thread.resolve` | `gh api graphql` with the `resolveReviewThread` mutation | `tea pr resolve <comment-id>` | `pull_request_review_write(method: "resolve_thread")` |
@@ -152,22 +152,74 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 | `forge.pr.merge.commit` | `gh pr merge <pr> --merge --delete-branch` | `tea pr merge <pr> --style merge`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "merge", delete_branch: true)` |
 | `forge.branch.delete` | folded into `--delete-branch` | `tea pr clean <pr>`, or `git push <remote> --delete <branch>` | `delete_branch` |
 
+**Bodies go through a file** — PR bodies and comments (`forge.pr.create*`,
+`forge.issue.comment`). Write the text with the `Write` tool (a worker writes it in its own
+scratch directory; a `cat > file <<EOF` heredoc carrying the body was refused by the
+worktree guard in a dogfood run), then pass the path. Two reasons, both measured:
+
+- Backticks inside a double-quoted `--body "…"` / `--description "…"` run as command
+  substitution before the forge sees the text, so `` `tally --x` `` silently becomes
+  nothing — or runs a command.
+- In a worktree-isolated worker, the guard refused an inline multi-line body
+  ("runs tea with the text … cannot be shown not to be git") and refuses any body built
+  with `$(…)`. The file forms above were allowed on both forges (Claude Code 2.1.285).
+
+On Gitea the JSON file holds the fields; build it with `jq -n --rawfile body <file>
+'{title: "WIP: <t>", head: "<branch>", base: "<base>", body: $body}' > <json>` so quoting
+cannot break it.
+
 **Both merge rows are incomplete on purpose: always add the explicit message** (and check
 the branch afterwards) — see *Never let a merge write its own commit message* below. The
 default message decides whether the merged-into branch runs CI, and it differs per forge.
 
-**`forge.pr.view` by *branch* is GitHub-only.** `gh pr view <branch>` resolves a branch
-name as readily as a number; no `tea` command and no Gitea endpoint does. A replacement
-worker adopting an already-open PR (the routine path after a `checkpoint`) therefore lists
-and filters on the head ref:
+**`forge.pr.view` by *branch* needs a list, not a view — on both forges.** A replacement
+worker adopting an already-open PR (the routine path after a `checkpoint`) looks the PR up
+by its head ref. Measured on gh 2.88.1, Gitea 1.25.3 and tea 0.15.1:
 
-```bash
-tea api "/repos/{owner}/{repo}/pulls?state=open" \
-  | jq -r '.[] | select(.head.ref == "issue/<n>-<slug>") | .number'
-```
+- **GitHub:** `gh pr view <branch>` resolves a branch, but it returns a PR for that branch
+  **whatever its state** — a closed or merged PR comes back with exit 0 — and it exits 1
+  both for "no PR" and for a real failure. List open PRs by head instead; empty output is
+  the "none" answer and a non-zero exit is an error:
 
-Empty output means no PR is open for that branch — open one. More than one line is a bug
-worth stopping on, not a pick-the-first situation.
+  ```bash
+  gh pr list --head "issue/<n>-<slug>" --state open --json number --jq '.[].number'
+  ```
+
+- **Gitea:** the list endpoint ignores `head=` and returns one page per call —
+  `default_paging_num` 30, `limit` capped at `max_response_items` 50 (`/api/v1/settings/api`
+  reports both). An unpaged call therefore misses every PR past the first page and reports
+  "none" while one is open: measured with 55 open PRs, the oldest branch's PR was not found.
+  `tea api` also exits 0 on an API error and prints the error object, so check the shape.
+  Page until an empty page — a short page is not proof of the end, because the cap is
+  per-server. This loop is for the PM. **A worker cannot run it:** in a worktree-isolated
+  agent the guard refuses a `tea` call whose URL is built at runtime (`page=$page`) —
+  measured on Claude Code 2.1.284. A worker makes one call per page with the number typed
+  in (`agents/issue-worker.md`, runbook step 2). The PM's loop:
+
+  ```bash
+  page=1
+  while :; do
+    batch=$(tea api "/repos/{owner}/{repo}/pulls?state=open&limit=50&page=$page") || exit 1
+    printf '%s' "$batch" | jq -e 'type == "array"' >/dev/null \
+      || { printf '%s\n' "$batch" >&2; exit 1; }
+    [ "$(printf '%s' "$batch" | jq length)" -eq 0 ] && break
+    printf '%s' "$batch" | jq -r --arg b "issue/<n>-<slug>" '.[] | select(.head.ref == $b) | .number'
+    page=$((page + 1))
+  done
+  ```
+
+  `GET /repos/{owner}/{repo}/pulls/{base}/{head}` does exist and answers directly, but it
+  needs the PR's base — and a replacement worker's brief carries `base:
+  <remote>/issue/<n>-<slug>`, not the integration branch the PR targets.
+
+Read the result the same way on both forges:
+
+- **Empty output, exit 0:** no PR is open for that branch. Run the lookup once more before
+  you act on it. Gitea pages by offset, so a PR closed on an earlier page during the scan
+  shifts a later PR onto a page already read — measured: closing PR #50 between page 1
+  and page 2 made page 2 skip PR #5.
+- **A non-zero exit:** the lookup failed. It never means "none".
+- **More than one line:** a bug worth stopping on, not a pick-the-first situation.
 
 **Draft pull requests on Gitea are a title prefix.** `tea pr create --draft` prepends
 `WIP: `, and Gitea treats a WIP-prefixed pull request as a draft. `tea pr edit --draft`
@@ -267,7 +319,7 @@ underlying REST endpoints exist well before that, so on a 1.25.x server — incl
 turn re-reads the agent's whole context, so a 30-minute watch at one turn per check costs
 60 full-context round trips instead of one. Resolve it through the abstraction like any
 other operation — never hardcode `gh`. On GitHub it is already blocking and takes the PR
-number the worker already has; on Gitea it resolves to the loop below. Keep either in a
+number the worker already has; on Gitea it resolves to the watch script below. Keep either in a
 subagent so log volume never reaches the PM.
 
 **Launch that call with `run_in_background: true`.** One blocking call is the right shape,
@@ -286,21 +338,27 @@ axes. Both waiting paths — this one and the Stage D deploy watch
 ([../skills/issue-flow/references/deploy.md](../skills/issue-flow/references/deploy.md)) —
 use it, and they use it the same way:
 
-1. Launch the watch (the `gh pr checks <pr> --watch` call, or the commit-anchored loop
+1. Launch the watch (the `gh pr checks <pr> --watch` call, or the Gitea watch script
    below) with `run_in_background: true`. Do not pass a `timeout`; do not `sleep` in the
    foreground waiting on it. The tool result carries the **path to the shell's output
    file** — keep it; that file is where the verdict lands.
-2. **Stay alive until that shell exits.** Do other in-scope work if you have any;
-   otherwise simply wait for the completion notification, which carries the same output
-   path.
+2. **Wait for that shell to exit.** Do other in-scope work if you have any; otherwise end
+   your turn. The harness wakes you when the shell exits, and the notification carries
+   the same output path.
 3. Read the output file, take the one-line verdict, and only then act on it or return it.
 
-**Do not return before the shell exits.** Both waiting paths run inside subagents, and a
-subagent's final text *is* its return — emitting it ends the agent, and an agent that has
-ended is never re-invoked when its background shell finishes. The verdict is then lost in
-exactly the way a killed foreground call loses it, so backgrounding buys nothing. Emit no
-verdict, no partial verdict and no "watching…" progress note until you have read the
-finished shell's output. A watch you launched and walked away from is not a watch.
+**A subagent must not return its verdict before the shell exits.** This applies to the
+worker watching its own CI. The PM's deploy watch runs on the main thread and returns no
+verdict. A subagent's final text *is* its return, and a guess sent before the shell
+exits is a verdict nobody tested. Measured on Claude Code 2.1.284: a subagent that ends its turn
+while its background shell runs is woken when the shell exits, and its next reply
+becomes its result. But the harness also notifies the caller at once, marked interim
+("stopped with background work of its own still running"), carrying whatever the
+subagent last said. So end that turn with a one-line status that cannot be read as a
+verdict — `waiting on CI for PR #<n>` — and send the verdict only after reading the
+finished shell's output. The PM ignores the interim notification (SKILL.md, *Reading a
+worker notification*). A watch
+you launched and walked away from is not a watch.
 
 The loop's own `sleep` interval and iteration count are unchanged — they bound the *watch*,
 not the tool call, and `maxMinutes` may now exceed ten because nothing kills it at ten.
@@ -326,32 +384,25 @@ substitutes `{owner}`/`{repo}` from the current checkout — which the worker al
 The Actions endpoint filters by `head_sha` **server-side**, so anchor the watch to the
 commit you just pushed rather than to "the latest run on the branch":
 
+The loop ships as a script, `scripts/gitea-ci-watch.sh` in the plugin. Run it from the
+checkout, with `run_in_background: true`, and type the full SHA in — get it first with
+`git rev-parse HEAD` as a call of its own:
+
 ```bash
-# ONE tool call. Blocks until CI for THIS commit is terminal.
-SHA=$(git rev-parse HEAD)
-none=0
-for _ in $(seq 1 60); do
-  v=$(tea api "/repos/{owner}/{repo}/actions/runs?head_sha=$SHA" \
-      | jq -r '(.workflow_runs // .runs // []) as $r
-               | if   ($r|length) == 0                  then "pending:none"
-                 elif any($r[]; .status != "completed") then "pending:running"
-                 elif all($r[]; .conclusion == "success" or .conclusion == "skipped")
-                                                        then "success"
-                 else "failure" end')
-  case "$v" in
-    pending:none)                       # no run for this commit yet
-      none=$((none+1))
-      [ "$none" -ge 6 ] && { echo "no-run-registered"; exit 0; }   # [skip ci] — NOT success
-      sleep 10 ;;
-    pending:running) sleep 30 ;;
-    ""|null) echo "watch-error"; exit 1 ;;   # request or jq failed — never a pass
-    *) echo "$v"; exit 0 ;;
-  esac
-done
-echo "timed-out"
+bash <pluginRoot>/scripts/gitea-ci-watch.sh <40-character sha of the commit you pushed>
 ```
 
-Four properties worth keeping if you rewrite it:
+It prints one verdict line: `success`, `failure`, `no-run-registered`, `timed-out`, or
+`watch-error` (exit 1). Only `success` is a pass. `<pluginRoot>` is the plugin's directory:
+a worker has it in its brief, and the PM knows it from the skill's base directory.
+
+**A worker must use the script, not an inline loop.** In a worktree-isolated agent the
+guard refuses `tea` inside `$(…)` and a URL built at runtime, which is what an inline loop
+needs; it allows `bash <script>` (measured on Claude Code 2.1.284, and the script itself
+run by an isolated agent on 2.1.285). `scripts/test-gitea-ci-watch.py` covers every
+verdict against a stub `tea`.
+
+The script keeps four properties. Keep them in any change to it:
 
 - **The `head_sha` anchor** — a stale run can never be mistaken for yours.
 - **`no-run-registered` distinct from `success`** — a `[skip ci]` commit was not tested.
@@ -365,12 +416,16 @@ Four properties worth keeping if you rewrite it:
 
 **The response is `{"total_count": n, "workflow_runs": [...]}`** — measured against 1.25.3,
 which is also what GitHub returns for the same endpoint. The `// .runs` fallback is there
-only so a differently-shaped server does not silently produce an empty `$r`, which would
-report `no-run-registered` on every commit forever.
+only so a differently-shaped server does not silently produce an empty run list, which
+would report `no-run-registered` on every commit forever. For the same reason a response
+with no run list at all — an API error such as `{"message": "not found"}` — is
+`watch-error`. The earlier inline loop read it as an empty list: measured on 1.25.3, a
+checkout whose remote named a missing repository got `no-run-registered` from it, and
+the recovery for that verdict goes looking for a skip token that is not there.
 
-**An empty request must not read as green.** The request's stderr is *not* suppressed: a
-failed `tea api` call leaves `v` empty, and without the `""|null` arm the empty string
-falls to `*)`, which ends the watch with exit 0 and a blank verdict. That is not
+**An empty request must not read as green.** The request's stderr is *not* suppressed, and
+a failed or empty `tea api` response is `watch-error` with exit 1 — never a blank verdict
+with exit 0, which a loop that falls through to a catch-all arm produces. That is not
 hypothetical — it is exactly what the login mismatch documented below produces. Measured
 on a checkout whose remote carried an embedded token:
 
@@ -421,10 +476,52 @@ No hit means nothing in the message suppressed anything. **Re-poll once before e
 The `pending:none` window above is 60 seconds, and a busy self-hosted runner that registers
 the run at 90 seconds produces exactly this clean-message `no-run-registered` — the most
 common cause of it, not a broken runner. Poll `forge.run.list` for the SHA again after a
-further 60-120 seconds; if a run has appeared, there was never anything to recover. Only a
-second clean poll points at the runner or the workflow file (disabled runner, billing, a
-workflow the provider cannot parse): a hard stop to resolve or substitute a local gate for,
-not something a re-push fixes.
+further 60-120 seconds; if a run has appeared, there was never anything to recover.
+
+On GitHub the same outcome arrives as `gh pr checks` exiting 1 with a check count of `0`
+(the exit-code note below); treat it exactly like `no-run-registered`, re-poll included,
+since a run registered seconds after the push reads the same way.
+
+**Still nothing → read the pull request before blaming the runner.** A `pull_request`
+workflow starts only on a PR *event* (`opened`, `synchronize`, `reopened` by default), and
+on GitHub only when a merge ref can be built. A state that blocks either produces no run
+and no error — indistinguishable here from a runner problem, and a local-gate substitute
+would merge on a weaker gate for no reason. Measured on github.com (September 2026), with a
+workflow triggered on `pull_request` to `[dev, main]`:
+
+| PR state | Runs registered |
+|---|---|
+| Opened while `CONFLICTING` | none (2.5 min) |
+| Base changed after opening — an `edited` event, not a default trigger | none (2.5 min) |
+| A conflict later cleared from the **base** side (now `MERGEABLE`) | none (4 min) — nothing fired an event |
+| Closed and reopened | one, within seconds |
+| A subject-only commit pushed to the head (`synchronize`) | one |
+
+So read `gh pr view <pr> --json mergeable`. `UNKNOWN` means GitHub has not computed it
+yet — read it again after a few seconds.
+
+- **`CONFLICTING`** → resolve the conflict by pushing to the PR's head branch (for a batch
+  PR, that is the C2 conflict step, done now). The push is the event, so the run starts
+  on its own; watch the new head SHA.
+- **`MERGEABLE`** → close and reopen the PR once (`gh pr close <pr> && gh pr reopen <pr>`),
+  then watch again. Do not try to tell *why* first: a base change shows only in the PR
+  timeline, and a conflict cleared from the base side shows nowhere — the table's third
+  row had nothing but its commits. Reopening is cheap and fires the missing event.
+- **Still no run after the reopen** → only now the runner or the workflow file (disabled
+  runner, billing, a workflow the provider cannot parse): a hard stop to resolve or
+  substitute a local gate for, not something a re-push fixes.
+
+The general rule: **a `pull_request` workflow needs both a merge ref and an event.**
+Anything that removes either stops CI without producing a failure.
+
+**Gitea differs** (measured on 1.25.3 with act_runner 0.4.0): a conflicting PR **does**
+run, so the merge-ref cause does not apply (Gitea's `.mergeable` is a boolean, `false`
+when conflicting). A base change registers no new run either, but the old run for the
+same head SHA stays — so a watch anchored to that SHA reports the **old base's** verdict
+instead of `no-run-registered`. After changing a PR's base on Gitea, close and reopen it
+(`tea pr close <pr> && tea pr reopen <pr>`), and watch until a run newer than the base
+change appears. Closing and reopening, and pushing to the head, both register a new
+run.
 
 **Cap the recovery at one clean re-trigger** — the re-poll is not a re-trigger and does not
 count against the cap. If a commit that greps clean also registers no run across both polls,
@@ -440,7 +537,14 @@ Never wrap `forge.pr.checks` or `forge.run.list` in an agent-driven retry loop o
 forge — and launch the blocking call in the background on either forge, for the ceiling
 reason above. **`gh pr checks` exits non-zero when checks fail (and `8` when they are still
 pending).** That surfaces as a failed `Bash` call — treat the non-zero exit as the
-result, not as a tool error to retry. A background shell reports the same exit status when
+result, not as a tool error to retry. **Exit 1 has two meanings, so check which.**
+Measured on gh 2.88.1: a PR with no run at all exits 1 at once, `--watch` or not, and
+prints `no checks reported on the '<branch>' branch` to **stderr**. That is GitHub's
+`no-run-registered`, not a failure. Do not match the message — a watch that keeps only
+stdout never sees it, and its wording can change between gh versions. Count the checks
+instead: `gh pr view <pr> --json statusCheckRollup --jq '.statusCheckRollup | length'`
+prints `0` for a PR with no run (exit 0) and the check count otherwise. `0` → recover it
+as `no-run-registered` (above). A background shell reports the same exit status when
 it finishes, so the meaning of the code does not change with the launch mode.
 
 **`[skip ci]` is native on both.** Gitea Actions honors `[skip ci]`, `[ci skip]`,

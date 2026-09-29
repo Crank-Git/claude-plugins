@@ -47,6 +47,15 @@ how a review ends.
   prepend its brief with the corresponding contract — "you are a decision-free
   <role>; never edit product code; never file issues; return the verdict JSON".)
 
+**Spawn every sub-agent unnamed — never pass `name:`.** This covers every spawn in this
+skill: the Phase 1 E2E-baseline child, the Phase 2 explorers and auditor, and the Phase 4
+scribe. The spawn guard denies a named agent without worktree isolation, and none of these
+agents needs a name: when you do message one (the scribe, Phase 4), address it by the
+`agentId` from its spawn result. A verdict-shaped label belongs in the brief or your own
+tracking, not the spawn call. Use `description` for a readable label instead.
+The scribe alone takes `isolation: "worktree"` (Phase 4) — that is for its checkout, not
+for a name.
+
 This skill runs on **GitHub or Gitea**. All tracker interaction goes through the forge's
 CLI — `gh` or `tea` — falling back to that forge's MCP server when the CLI is
 unavailable. Every command is named as an abstract operation and resolved in
@@ -104,12 +113,14 @@ have damaged.
    On Gitea, `forge.label.create` is not idempotent on its own — check
    `forge.label.list` first and create only what is missing, exactly as `labels.md`
    documents.
-6. **Review workspace.** `RUN_ID = <YYYY-MM-DD>-<short-slug>`. Create branch
-   `review/<RUN_ID>` off dev in its own worktree at
-   **`.claude/worktrees/review-<RUN_ID>`** — inside the checkout, already gitignored, and
-   inside the project root so a sandboxed Bash tool can write there. A sibling directory
-   (`../review-<RUN_ID>`) is outside the project and may be blocked. Also create a scratch
-   dir for explorer output: `<scratch>/review-<RUN_ID>/{screenshots,notes}`.
+6. **Review workspace.** `RUN_ID = <YYYY-MM-DD>-<short-slug>`. The deliverables branch
+   is `review/<RUN_ID>`, cut from dev by the scribe in its own harness worktree at
+   Phase 4 — you create **no** worktree yourself (the same model as issue-flow's workers:
+   [../issue-flow/references/worktrees.md](../issue-flow/references/worktrees.md)).
+   Create only a scratch dir for explorer output:
+   `<scratch>/review-<RUN_ID>/{screenshots,notes}`. Write `<scratch>` as an **absolute**
+   path in every brief — the explorers and the scribe run in other directories, and the
+   scribe in another tree.
 
 # Phase 1 — E2E baseline (existing suite)
 
@@ -121,11 +132,6 @@ Phase 3 (type `bug`, evidence = the test name + failure excerpt). If none exists
 it — the review-scribe creates one in Phase 4.
 
 # Phase 2 — Fan out the reviewers
-
-**Spawn every reviewer unnamed — never pass `name:`.** The spawn guard denies a named
-agent without worktree isolation, and none of these agents need `SendMessage`
-addressability; a verdict-shaped label belongs in the brief or your own tracking, not
-the spawn call. Use `description` for a readable label instead.
 
 **The browser is a singleton.** The browser MCP (Playwright / Chrome DevTools) is one
 shared browser session — every agent's `browser_*` calls hit the same tabs. Two
@@ -206,8 +212,11 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
 
 # Phase 4 — Deliverables PR (manual + E2E tests)
 
-1. Spawn **`issue-flow:review-scribe`** on the review worktree. Brief: worktree,
-   branch `review/<RUN_ID>`, the explorers' `walkthrough` files, `screenshotDir` =
+1. Spawn **`issue-flow:review-scribe`** with **`isolation: "worktree"`** and no `name:`.
+   The harness gives it its own worktree, cut from the default branch; the scribe points
+   it at the review branch itself. Brief: branch `review/<RUN_ID>`, `base:
+   <remote>/<dev>` (a re-run for a CI failure passes `<remote>/review/<RUN_ID>` instead,
+   once the branch is pushed), `remote`, the explorers' `walkthrough` files, `screenshotDir` =
    `<scratch>/review-<RUN_ID>/screenshots/` (the **root** — it holds one `<flow-slug>/`
    subdir per flow, and those subdirs are preserved in the manual so identically
    numbered screenshots from different flows can't overwrite each other), flow outcomes,
@@ -218,10 +227,13 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
    and **`routedRepairs:`**, the Phase 3 list of documentation findings routed to this PR
    (each one: file, what is wrong, what it should say). The scribe repairs those in the
    same PR. Omit the list and the ledger claims work nobody did.
-2. On its verdict: check `notesForPM` (app changes a test needs — e.g. missing
+2. On its verdict — keep the notification's `worktreePath` and `worktreeBranch` for
+   teardown — check `notesForPM` (app changes a test needs — e.g. missing
    test-ids — go through the filing gate like any other finding; a missing test-id that
    blocks a test is a dead guard and earns an issue, marker included, not a fix), then push the
-   branch and open **one PR `review/<RUN_ID>` → dev**: title
+   branch from your own checkout (`git push -u <remote> review/<RUN_ID>` — branch refs are
+   shared across worktrees, so you need not enter the scribe's) and open **one PR
+   `review/<RUN_ID>` → dev**: title
    `Project review <RUN_ID>: user manual + E2E smoke tests`, body listing manual pages,
    tests added, the test-run result, **the routed repairs and where each landed** (read them
    from the scribe's `repairsMade`), and the filed-issue ledger. A repair the scribe reports
@@ -232,8 +244,13 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
    batch-PR column (issue-flow's `references/session-config.md`), so under the default
    `batch-review` and stricter, request a **human approving review** and do not merge
    without it. Then: CI green, threads resolved → merge. CI failure caused by the new
-   tests → send it back to a scribe re-run; **never patch product code to make a review
-   test pass.**
+   tests → send it back to a scribe re-run, then **push again** and wait for CI on the new
+   head. Prefer `SendMessage` to the same scribe by its `agentId`. When it is gone (a
+   restart), spawn a fresh scribe with `base: <remote>/review/<RUN_ID>` — but first remove
+   the old scribe's tree, which still has `review/<RUN_ID>` checked out and would make the
+   new scribe's checkout fail (`already used by worktree`): find it by branch with
+   `git worktree list --porcelain` and remove it with `git worktree remove -f -f`.
+   **Never patch product code to make a review test pass.**
 
 # Phase 5 — Report & hand off to issue-flow
 
@@ -257,8 +274,14 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
    to "review then fix", skip the ask and invoke the `issue-flow:issue-flow` skill
    directly — the findings are labeled `status:ready`/`status:needs-feedback`, so its
    Stage A triage picks them straight up.
-4. **Teardown.** Stop any sandbox you launched, remove the review worktree after the
-   PR merges, `git worktree prune`.
+4. **Teardown.** Stop any sandbox you launched. Remove the scribe's worktree when the PR
+   merges, and also when the review ends without a merge (a human review still pending,
+   an abandoned run) — the branch is pushed, so the tree holds nothing the remote lacks.
+   Find it by its branch, not by a remembered path (a restart loses the notification):
+   the `git worktree list --porcelain` entry on `refs/heads/review/<RUN_ID>`. Remove it
+   with `git worktree remove -f -f <path>` (a lock can outlive its agent), then delete the
+   scribe's harness branch — `worktreeBranch` from the notification, or, without it, every
+   `worktree-agent-*` branch no worktree has checked out — and `git worktree prune`.
 
 ---
 

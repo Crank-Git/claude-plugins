@@ -43,6 +43,11 @@ check(
     expect_names=1,
 )
 check(
+    "a named subagent_type spawn without isolation is flagged",
+    'Launch `subagent_type: "issue-flow:issue-worker"`, `name: "worker-<n>"`.',
+    expect_names=1,
+)
+check(
     "named spawn with isolation is clean",
     'Spawn with `Agent`, `agentType: "x"`, **`isolation: "worktree"`**, `name: "worker-<n>"`.',
 )

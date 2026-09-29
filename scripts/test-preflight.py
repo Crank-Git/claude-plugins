@@ -120,7 +120,7 @@ with tempfile.TemporaryDirectory() as base:
         "remote: origin (fetched",
         "epic/42-auth",
         "dev branch: present",
-        "leftover worktrees: none",
+        "worktrees from an earlier session: none",
         "forge queries: skipped (forge is gitea",
     ):
         if expected not in digest:
@@ -174,6 +174,10 @@ with tempfile.TemporaryDirectory() as base:
     digest = run_hook(payload_here, project) or ""
     if "issue/7-fix" not in digest:
         failures.append(f"digest should report the leftover worktree:\n{digest}")
+    if "check each issue's status before removing" not in digest:
+        failures.append(f"digest must not present a possibly-parked tree as removable:\n{digest}")
+    if "leftover worktrees" in digest:
+        failures.append(f"'leftover' tells the PM to remove a tree Phase 0 may keep:\n{digest}")
     git(project, "worktree", "remove", "--force", worktree)
 
     # --- fail open ------------------------------------------------------------

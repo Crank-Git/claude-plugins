@@ -7,9 +7,12 @@ to react to what it returns.
 
 ## Launch
 
-Spawn with `Agent`, `agentType: "issue-flow:issue-worker"`,
+Spawn with `Agent`, `subagent_type: "issue-flow:issue-worker"`,
 **`isolation: "worktree"`**, one per claimed issue, up to `concurrency` at once (across
-all live batches). `isolation: "worktree"` is not optional — it is what keeps concurrent
+all live batches). Keep the **`agentId`** the spawn result returns — it is the worker's
+address for everything below, for this session only. (`name: "worker-<issue>"` is an
+extra handle only where the `Agent` tool has a `name` parameter, which needs
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`.) `isolation: "worktree"` is not optional — it is what keeps concurrent
 workers apart. See [worktrees.md](worktrees.md) for what goes wrong without it.
 Sequenced batch members (dependency chains) launch only after their predecessor
 sub-merges. The PM is notified when each finishes — it does **not** sit and wait.
@@ -18,7 +21,8 @@ sub-merges. The PM is notified when each finishes — it does **not** sit and wa
 
 The worker is an **independent Opus engineer**: it may research (web), use available MCP
 servers (via `ToolSearch`), and spawn its own child agents/Workflows — all on the
-**Sonnet** tier and all **confined to that issue's worktree**. The PM sets none of this;
+**Sonnet** tier, all **confined to that issue's worktree** and its own scratch directory,
+and all finished before it returns its verdict. The PM sets none of this;
 it lives in the worker's agent definition. A worker may also **file new untriaged issues**
 for out-of-scope discoveries — but only those that pass the filing gate (behavior, a
 user-visible output, a guard that guards nothing, a blocked epic, a maintainer ruling).
@@ -62,8 +66,17 @@ practices:    tdd: true|false            (tests land with or before the implemen
               commitStyle: <e.g. conventional>
               docs: none|public-api|all
 steRule:      <path to the writing standard: .claude/rules/ste.md when the project has one
-               (the planner writes it), else this plugin's references/ste.md>
+               (the planner writes it), else <pluginRoot>/references/ste.md — absolute>
+pluginRoot:   <absolute path of the plugin directory: two levels above the issue-flow
+               skill's base directory, e.g. …/issue-flow when the skill is at
+               …/issue-flow/skills/issue-flow>
 ```
+
+`pluginRoot` is not optional either. A worker is not told where its own definition lives,
+so every `../references/…` link in its runbook — forge operations, the writing standard,
+the finding policy — and the Gitea CI-watch script (`scripts/gitea-ci-watch.sh`) are
+reachable only through it. The PM knows the path: the harness shows the skill's base
+directory when the skill loads.
 
 `crossCheck` is not optional on a multi-member batch: it is the field that makes the step-4
 gate un-skippable, because you cannot fill it in before the comment exists. A worker that
@@ -97,10 +110,11 @@ Several gates send an issue **back to the worker** — an unevidenced criterion,
 practice, a review comment, a conflict to resolve. Two mechanisms, and they are not
 equivalent:
 
-- **Preferred — `SendMessage` to the worker that returned the verdict** (by its agent id
-  or name). It keeps its context, its per-agent worktree, and its branch already checked
-  out, so nothing is re-pointed and nothing can be lost. Name workers predictably at
-  launch (`worker-<issue>`) so they stay addressable.
+- **Preferred — `SendMessage` to the worker that returned the verdict**, by the
+  `agentId` from its spawn result (or `worker-<issue>` where names exist). It keeps its
+  context, its per-agent worktree, and its branch already checked out, so nothing is
+  re-pointed and nothing can be lost. Measured with the teams flag unset: a returned
+  isolated worker resumed by `agentId` answered from its original context.
 - **Fallback — re-spawn**, when the worker is gone (session restarted, or it is no longer
   addressable). A re-spawn is a **new agent in a new empty worktree on the default
   branch**, so the brief must carry `base: <remote>/issue/<number>-<slug>` — the published
@@ -149,10 +163,11 @@ The worker returns exactly this object as its final message:
 
 | outcome | PM action (the gate) |
 |---|---|
-| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + the **pre-patch check** when the PR adds or changes tests (`localChecks` states the new tests failed against the pre-patch code — absent goes back to the worker) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker via `SendMessage`, see Rework; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash` **with the message written out — `--subject "<title> (#<pr>)" --body "[skip ci]"`, never the forge's default** (SKILL.md C1 step 4: GitHub's default carries the token only by luck, Gitea's carries none and starts a full CI run per sub-merge); then **check what landed** — fetch the integration branch and grep its head, re-triggering only per C1 step 4b (SKILL.md C1 step 4b); **`forge.issue.status.set <member> status:batched` as its own step, before any bookkeeping** (SKILL.md C1 step 5 — never a bare label add); then tick the tracking checklist, remove the worktree it reported (`git worktree remove --force <worktree>`; `git worktree prune`), launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: gate the PR like a batch PR into dev (the batch-PR column of `prAuthority` — [session-config.md](session-config.md)), merge `--squash`, **close the issue** (`Closes #` auto-closes only when dev is the default branch; otherwise close it manually with a comment linking the PR) and clear its status label, then Stage D directly. |
-| `checkpoint` | The worker hit its turn budget with work pushed; nothing is wrong. Re-spawn a **fresh** worker (not `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and `remaining` appended to the plan. Remove the checkpointed worktree (`git worktree remove --force <worktree>`; `git branch -D worktree-agent-<id>`) — the replacement gets a fresh one and re-checks-out the published branch. **Leave the status label untouched** — `status:in-review` if the worker had opened its PR, `status:in-progress` if it checkpointed before that; both are correct and the replacement adopts whatever PR exists. Post one terse comment recording the checkpoint (the chain cap counts these). **Does not free the slot** — the issue is still in flight. No gate, no digest line. |
+| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + the **pre-patch check** when the PR adds or changes tests (`localChecks` states the new tests failed against the pre-patch code — absent goes back to the worker) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker via `SendMessage`, see Rework; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash` **with the message written out — `--subject "<title> (#<pr>)" --body "[skip ci]"`, never the forge's default** (SKILL.md C1 step 4: GitHub's default carries the token only by luck, Gitea's carries none and starts a full CI run per sub-merge); then **check what landed** — fetch the integration branch and grep its head, re-triggering only per C1 step 4b (SKILL.md C1 step 4b); **`forge.issue.status.set <member> status:batched` as its own step, before any bookkeeping** (SKILL.md C1 step 5 — never a bare label add); then tick the tracking checklist, remove the worktree it reported (`git worktree remove -f -f <worktree>`; `git branch -D <worktreeBranch>` from its notification; `git worktree prune`), launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: gate the PR like a batch PR into dev (the batch-PR column of `prAuthority` — [session-config.md](session-config.md)), merge `--squash`, **close the issue** (`Closes #` auto-closes only when dev is the default branch; otherwise close it manually with a comment linking the PR) and clear its status label, then Stage D directly. |
+| `checkpoint` | The worker hit its turn budget with work pushed; nothing is wrong. Re-spawn a **fresh** worker (not `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and `remaining` appended to the plan. Remove the checkpointed worktree (`git worktree remove -f -f <worktree>`; `git branch -D <worktreeBranch>` from its notification) — the replacement gets a fresh one and re-checks-out the published branch. **Leave the status label untouched** — `status:in-review` if the worker had opened its PR, `status:in-progress` if it checkpointed before that; both are correct and the replacement adopts the open PR. Post one terse comment recording the checkpoint (the chain cap counts these). **Does not free the slot** — the issue is still in flight. No gate, no digest line. |
 | `needs-feedback` | Label `status:needs-feedback`, post `question` as an issue comment, park per the feedback policy (notify; ask interactively only when it gates work). Free the slot. |
 | `blocked` | Label `status:blocked`, comment naming `blocker`. Free the slot. |
+| *(no verdict)* | Marked interim ("stopped with background work of its own still running") → not an outcome; keep the slot, the verdict follows. Final with no JSON → `SendMessage` once for the verdict, then `blocked`. For an issue already gated → ignore. (SKILL.md, *Reading a worker notification*.) |
 
 **On every verdict, read `notesForPM`** — it carries findings the worker neither filed nor
 repaired, and it is the only place they exist. Put each one through the filing gate: a
