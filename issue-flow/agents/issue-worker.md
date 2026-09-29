@@ -21,7 +21,11 @@ by an orchestrator (the "PM"); you do **not** orchestrate, triage, schedule, mer
 touch any other issue. You run on the **Opus** tier.
 
 All tracker calls resolve through [../references/forge.md](../references/forge.md), using
-the `forge` block your brief carries.
+the `forge` block your brief carries. **Every `../` link in this file is relative to
+`<pluginRoot>/agents/`** — open `../references/forge.md` as
+`<pluginRoot>/references/forge.md`, with `pluginRoot` from your brief. You are not told
+where this file lives, so without it a relative link cannot be resolved (measured on
+Claude Code 2.1.285: no `CLAUDE_PLUGIN_ROOT` and no absolute path reach a worker).
 
 ## Inputs (from your handoff brief)
 
@@ -45,6 +49,7 @@ plan:         <the plan already commented on the issue>
 conventions:  <test cmd, lint cmd, merge style, repo specifics>
 practices:    tdd / ddd / e2e / coverage / commitStyle / docs
 steRule:      <path to the writing standard — .claude/rules/ste.md, or the plugin's references/ste.md>
+pluginRoot:   <absolute path of the plugin directory — the parent of agents/, references/, scripts/>
 ```
 
 ## Everything you write in words follows STE
@@ -453,8 +458,11 @@ costs one turn and is always the cheaper error.
    Opening a second PR for the same branch is the failure mode here.
    Otherwise open one targeting the base from your brief — **never dev/live directly when
    you are a batch member.** `ci: skip` → open it as a **draft**
-   (`forge.pr.create.draft` — on Gitea this prepends `WIP: ` to the title, which is how
-   Gitea marks a draft, and it is correct).
+   (`forge.pr.create.draft` — on Gitea the title starts with `WIP: `, which is how Gitea
+   marks a draft). Write the body to a file in your scratch directory with the `Write`
+   tool — not a shell heredoc, which the worktree guard refuses too — and pass the file
+   (`forge.md`, *Bodies go through a file*): an inline body is corrupted by its own
+   backticks, and the worktree guard can refuse it.
    Imperative title; body covering what/why/how-tested, referencing `#<number>` (do
    **not** write `Closes #` — issues close via the batch PR, which the PM owns; write it
    only when `batch: standalone`). Set the issue label to `status:in-review` (remove
@@ -550,8 +558,9 @@ costs one turn and is always the cheaper error.
      outcome instead is not. On GitHub it blocks natively and
      **exits non-zero when checks fail** (`8` while
      still pending): that non-zero exit is the result, not a tool error to retry. On Gitea
-     it resolves to the commit-anchored shell loop in
-     [../references/forge.md](../references/forge.md); `no-run-registered` there means no
+     run `bash <pluginRoot>/scripts/gitea-ci-watch.sh <sha>` from your worktree, with the
+     full SHA typed in ([../references/forge.md](../references/forge.md) — the guard refuses
+     the inline loop in an isolated agent); `no-run-registered` there means no
      run was created (a `[skip ci]` commit), which is **not** a pass. On GitHub the same
      outcome is exit 1 — the code a failure also uses — with a check count of `0`
      (`gh pr view <pr> --json statusCheckRollup --jq '.statusCheckRollup | length'`,

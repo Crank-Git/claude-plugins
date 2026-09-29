@@ -108,7 +108,7 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 | `forge.issue.label.remove` | `gh issue edit <n> --remove-label "<l>"` | `tea issues edit <n> --remove-labels "<l>"` | `issue_write(method: "remove_label")` — **ID** |
 | `forge.issue.status.set` | `gh issue edit <n> --add-label "<new>" --remove-label "<old>"` | `tea issues edit <n> --add-labels "<new>" --remove-labels "<old>"` | `issue_write(method: "add_labels")` **then** `issue_write(method: "remove_label")` |
 | `forge.issue.assign` | `gh issue edit <n> --add-assignee @me` | `tea issues edit <n> --set-assignees <me>` | `issue_write(method: "update", assignees)` |
-| `forge.issue.comment` | `gh issue comment <n> --body "<b>"` | `tea comments <n> "<b>"` | `issue_write(method: "add_comment")` |
+| `forge.issue.comment` | `gh issue comment <n> --body-file <path>` | `tea api -X POST /repos/{owner}/{repo}/issues/<n>/comments --data @<json>` (`{"body": …}`) | `issue_write(method: "add_comment")` |
 | `forge.issue.edit.body` | `gh issue edit <n> --body "<b>"` | `tea issues edit <n> --description "<b>"` | `issue_write(method: "update", body)` |
 | `forge.issue.close` | `gh issue close <n>` | `tea issues close <n>` | `issue_write(method: "update", state: "closed")` |
 
@@ -141,8 +141,8 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 
 | Operation | GitHub (`gh`) | Gitea (`tea`) | Gitea MCP |
 |---|---|---|---|
-| `forge.pr.create.draft` | `gh pr create --draft --base <base> --title "<t>" --body "<b>"` | `tea pr create --draft --base <base> --title "<t>" --description "<b>"` | `pull_request_write(method: "create", draft: true)` |
-| `forge.pr.create` | `gh pr create --base <base> --title "<t>" --body "<b>"` | `tea pr create --base <base> --title "<t>" --description "<b>"` | `pull_request_write(method: "create")` |
+| `forge.pr.create.draft` | `gh pr create --draft --base <base> --title "<t>" --body-file <path>` | `tea api -X POST /repos/{owner}/{repo}/pulls --data @<json>` (`{"title": "WIP: <t>", "head": …, "base": …, "body": …}`) | `pull_request_write(method: "create", draft: true)` |
+| `forge.pr.create` | `gh pr create --base <base> --title "<t>" --body-file <path>` | `tea api -X POST /repos/{owner}/{repo}/pulls --data @<json>` (`{"title", "head", "base", "body"}`) | `pull_request_write(method: "create")` |
 | `forge.pr.ready` | `gh pr ready <pr>` | `tea pr edit <pr> --ready` | `pull_request_write(method: "update", title)` — strip `WIP: ` |
 | `forge.pr.view` | `gh pr view <pr> --json state,reviews,mergeable` | `tea api /repos/{owner}/{repo}/pulls/<pr>` (by number; by branch, see below) | `pull_request_read` |
 | `forge.pr.diff` | `gh pr diff <pr>` | `tea api /repos/{owner}/{repo}/pulls/<pr>.diff` | `pull_request_read` |
@@ -151,6 +151,22 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 | `forge.pr.merge.squash` | `gh pr merge <pr> --squash --delete-branch` | `tea pr merge <pr> --style squash`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "squash", delete_branch: true)` |
 | `forge.pr.merge.commit` | `gh pr merge <pr> --merge --delete-branch` | `tea pr merge <pr> --style merge`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "merge", delete_branch: true)` |
 | `forge.branch.delete` | folded into `--delete-branch` | `tea pr clean <pr>`, or `git push <remote> --delete <branch>` | `delete_branch` |
+
+**Bodies go through a file** — PR bodies and comments (`forge.pr.create*`,
+`forge.issue.comment`). Write the text with the `Write` tool (a worker writes it in its own
+scratch directory; a `cat > file <<EOF` heredoc carrying the body was refused by the
+worktree guard in a dogfood run), then pass the path. Two reasons, both measured:
+
+- Backticks inside a double-quoted `--body "…"` / `--description "…"` run as command
+  substitution before the forge sees the text, so `` `tally --x` `` silently becomes
+  nothing — or runs a command.
+- In a worktree-isolated worker, the guard refused an inline multi-line body
+  ("runs tea with the text … cannot be shown not to be git") and refuses any body built
+  with `$(…)`. The file forms above were allowed on both forges (Claude Code 2.1.285).
+
+On Gitea the JSON file holds the fields; build it with `jq -n --rawfile body <file>
+'{title: "WIP: <t>", head: "<branch>", base: "<base>", body: $body}' > <json>` so quoting
+cannot break it.
 
 **Both merge rows are incomplete on purpose: always add the explicit message** (and check
 the branch afterwards) — see *Never let a merge write its own commit message* below. The
@@ -303,7 +319,7 @@ underlying REST endpoints exist well before that, so on a 1.25.x server — incl
 turn re-reads the agent's whole context, so a 30-minute watch at one turn per check costs
 60 full-context round trips instead of one. Resolve it through the abstraction like any
 other operation — never hardcode `gh`. On GitHub it is already blocking and takes the PR
-number the worker already has; on Gitea it resolves to the loop below. Keep either in a
+number the worker already has; on Gitea it resolves to the watch script below. Keep either in a
 subagent so log volume never reaches the PM.
 
 **Launch that call with `run_in_background: true`.** One blocking call is the right shape,
@@ -322,7 +338,7 @@ axes. Both waiting paths — this one and the Stage D deploy watch
 ([../skills/issue-flow/references/deploy.md](../skills/issue-flow/references/deploy.md)) —
 use it, and they use it the same way:
 
-1. Launch the watch (the `gh pr checks <pr> --watch` call, or the commit-anchored loop
+1. Launch the watch (the `gh pr checks <pr> --watch` call, or the Gitea watch script
    below) with `run_in_background: true`. Do not pass a `timeout`; do not `sleep` in the
    foreground waiting on it. The tool result carries the **path to the shell's output
    file** — keep it; that file is where the verdict lands.
@@ -368,32 +384,25 @@ substitutes `{owner}`/`{repo}` from the current checkout — which the worker al
 The Actions endpoint filters by `head_sha` **server-side**, so anchor the watch to the
 commit you just pushed rather than to "the latest run on the branch":
 
+The loop ships as a script, `scripts/gitea-ci-watch.sh` in the plugin. Run it from the
+checkout, with `run_in_background: true`, and type the full SHA in — get it first with
+`git rev-parse HEAD` as a call of its own:
+
 ```bash
-# ONE tool call. Blocks until CI for THIS commit is terminal.
-SHA=$(git rev-parse HEAD)
-none=0
-for _ in $(seq 1 60); do
-  v=$(tea api "/repos/{owner}/{repo}/actions/runs?head_sha=$SHA" \
-      | jq -r '(.workflow_runs // .runs // []) as $r
-               | if   ($r|length) == 0                  then "pending:none"
-                 elif any($r[]; .status != "completed") then "pending:running"
-                 elif all($r[]; .conclusion == "success" or .conclusion == "skipped")
-                                                        then "success"
-                 else "failure" end')
-  case "$v" in
-    pending:none)                       # no run for this commit yet
-      none=$((none+1))
-      [ "$none" -ge 6 ] && { echo "no-run-registered"; exit 0; }   # [skip ci] — NOT success
-      sleep 10 ;;
-    pending:running) sleep 30 ;;
-    ""|null) echo "watch-error"; exit 1 ;;   # request or jq failed — never a pass
-    *) echo "$v"; exit 0 ;;
-  esac
-done
-echo "timed-out"
+bash <pluginRoot>/scripts/gitea-ci-watch.sh <40-character sha of the commit you pushed>
 ```
 
-Four properties worth keeping if you rewrite it:
+It prints one verdict line: `success`, `failure`, `no-run-registered`, `timed-out`, or
+`watch-error` (exit 1). Only `success` is a pass. `<pluginRoot>` is the plugin's directory:
+a worker has it in its brief, and the PM knows it from the skill's base directory.
+
+**A worker must use the script, not an inline loop.** In a worktree-isolated agent the
+guard refuses `tea` inside `$(…)` and a URL built at runtime, which is what an inline loop
+needs; it allows `bash <script>` (measured on Claude Code 2.1.284, and the script itself
+run by an isolated agent on 2.1.285). `scripts/test-gitea-ci-watch.py` covers every
+verdict against a stub `tea`.
+
+The script keeps four properties. Keep them in any change to it:
 
 - **The `head_sha` anchor** — a stale run can never be mistaken for yours.
 - **`no-run-registered` distinct from `success`** — a `[skip ci]` commit was not tested.
@@ -407,12 +416,16 @@ Four properties worth keeping if you rewrite it:
 
 **The response is `{"total_count": n, "workflow_runs": [...]}`** — measured against 1.25.3,
 which is also what GitHub returns for the same endpoint. The `// .runs` fallback is there
-only so a differently-shaped server does not silently produce an empty `$r`, which would
-report `no-run-registered` on every commit forever.
+only so a differently-shaped server does not silently produce an empty run list, which
+would report `no-run-registered` on every commit forever. For the same reason a response
+with no run list at all — an API error such as `{"message": "not found"}` — is
+`watch-error`. The earlier inline loop read it as an empty list: measured on 1.25.3, a
+checkout whose remote named a missing repository got `no-run-registered` from it, and
+the recovery for that verdict goes looking for a skip token that is not there.
 
-**An empty request must not read as green.** The request's stderr is *not* suppressed: a
-failed `tea api` call leaves `v` empty, and without the `""|null` arm the empty string
-falls to `*)`, which ends the watch with exit 0 and a blank verdict. That is not
+**An empty request must not read as green.** The request's stderr is *not* suppressed, and
+a failed or empty `tea api` response is `watch-error` with exit 1 — never a blank verdict
+with exit 0, which a loop that falls through to a catch-all arm produces. That is not
 hypothetical — it is exactly what the login mismatch documented below produces. Measured
 on a checkout whose remote carried an embedded token:
 

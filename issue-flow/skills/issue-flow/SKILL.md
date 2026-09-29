@@ -612,6 +612,12 @@ back in `notesForPM`.
 
    Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
+   **The brief carries `pluginRoot`**, the plugin's absolute directory: two levels above
+   this skill's base directory, which the harness shows when the skill loads. A worker
+   is not told where its runbook lives, so its `../references/…` links and the Gitea
+   CI-watch script (`scripts/gitea-ci-watch.sh`) resolve only through it (measured on
+   Claude Code 2.1.285). Pass `steRule` as an absolute path for the same reason.
+
 ## Stage C — Integrate (two gates)
 
 ### Reading a worker notification (every worker: C1 members, C2 fix workers)

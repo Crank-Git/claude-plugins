@@ -66,8 +66,17 @@ practices:    tdd: true|false            (tests land with or before the implemen
               commitStyle: <e.g. conventional>
               docs: none|public-api|all
 steRule:      <path to the writing standard: .claude/rules/ste.md when the project has one
-               (the planner writes it), else this plugin's references/ste.md>
+               (the planner writes it), else <pluginRoot>/references/ste.md — absolute>
+pluginRoot:   <absolute path of the plugin directory: two levels above the issue-flow
+               skill's base directory, e.g. …/issue-flow when the skill is at
+               …/issue-flow/skills/issue-flow>
 ```
+
+`pluginRoot` is not optional either. A worker is not told where its own definition lives,
+so every `../references/…` link in its runbook — forge operations, the writing standard,
+the finding policy — and the Gitea CI-watch script (`scripts/gitea-ci-watch.sh`) are
+reachable only through it. The PM knows the path: the harness shows the skill's base
+directory when the skill loads.
 
 `crossCheck` is not optional on a multi-member batch: it is the field that makes the step-4
 gate un-skippable, because you cannot fill it in before the comment exists. A worker that

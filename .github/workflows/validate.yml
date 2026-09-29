@@ -51,5 +51,8 @@ jobs:
       - name: Test the CI-execution verifier
         run: python3 scripts/test-verify-ci-ran.py
 
+      - name: Test the Gitea CI-watch script
+        run: python3 scripts/test-gitea-ci-watch.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py
