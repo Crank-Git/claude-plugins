@@ -57,6 +57,14 @@ For reference, `issue-flow` itself never trips this guard: its only named spawn 
 improvised `name:` at a spawn site that did not specify one — the failure in
 issue #25.
 
+This check can only fire when the `Agent` tool has a `name` parameter at all. Measured
+on Claude Code 2.1.285 (issue #65): `name`, `team_name` and `mode` exist only with
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`; without the flag a caller cannot send the
+shape, and issue-flow addresses workers by `agentId` instead. With the flag set, one
+2.1.285 sample of the named-without-isolation shape came back as an ordinary background
+subagent that delivered its result, so the peer session measured on 2.1.232 may be gone;
+the guard stays as cheap insurance.
+
 Fork dispatch (issue #50)
 -------------------------
 A fork inherits the caller's whole session. When the caller is the PM, that is the
@@ -124,7 +132,8 @@ REASON = (
     "case — including a worker spawning its own review or fix children.\n"
     "\n"
     "Add `isolation: \"worktree\"` **only** if you also need the agent addressable by "
-    "`SendMessage` later, as the PM does for `worker-<issue>`. Do not add it to a "
+    "`SendMessage` later by name, as the PM does for `worker-<issue>` where names exist. "
+    "Do not add it to a "
     "worker's own child: an isolated child builds in a separate worktree and its "
     "commits never reach your branch (agents/issue-worker.md).\n"
     "\n"
@@ -142,7 +151,8 @@ FORK_REASON = (
     "merged them to dev with no PM gate.\n"
     "\n"
     "**Dispatch the build to `issue-flow:issue-worker` instead**, with "
-    "`isolation: \"worktree\"` and `name: \"worker-<issue>\"`, passing the same brief "
+    "`isolation: \"worktree\"` (plus `name: \"worker-<issue>\"` where the tool offers it), "
+    "passing the same brief "
     "(SKILL.md Stage B step 5). A worker starts with no PM context and does only what "
     "the brief says.\n"
     "\n"

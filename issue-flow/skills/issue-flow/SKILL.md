@@ -43,7 +43,7 @@ Neither is required — issue-flow works on any triage-able tracker.
 This file is the **PM's** operating manual — it is the only role that reads it. The
 sub-agents have their own **self-contained** prompts and never load this one:
 `issue-flow:issue-worker` (the worker) and `issue-flow:deploy-verifier` (Stage D's
-browser check). The PM spawns them by `agentType` and passes only a short per-task
+browser check). The PM spawns them by `subagent_type` and passes only a short per-task
 brief; everything else they need lives in their own definition. Stage D's deploy watch
 is **not an agent** — it is one background shell command (see
 [references/deploy.md](references/deploy.md)).
@@ -309,7 +309,7 @@ dependency.
 12. **State recovery.** Re-adopt unfinished work before picking new work:
    - `git branch -r` entries `epic/*` / `batch/*` → live batches: reconcile against their tracking issue's checklist (which members sub-merged, which are in flight).
    - `git worktree list` entries on `issue/` branches whose issue is **not** parked (`status:needs-feedback` / `status:blocked` — a parked tree was kept on purpose, for its batch gate or because it holds unpushed or uncommitted work; leave it and list it in the digest) → leftovers from a previous session's workers, which you cannot re-enter and no new worker can be placed into. Adopt the work from the **branch and its PR**, not the directory: re-spawn with `base: <remote>/issue/<n>-<slug>`, then `git worktree remove -f -f` the orphan (a session killed mid-run leaves the lock behind, and plain `--force` refuses a locked tree), `git worktree prune`, and run the dead harness-branch sweep ([worktrees.md](references/worktrees.md#teardown-is-still-the-pms-job) — a previous session's notification is gone, so its `worktree-agent-<id>` name is too).
-   - In-flight workers / open PRs (draft sub-PRs and open batch PRs) → resume at the right stage (sub-merge, batch gate, CI, integrate).
+   - In-flight workers / open PRs (draft sub-PRs and open batch PRs) → resume at the right stage (sub-merge, batch gate, CI, integrate). A `worker launched: <agentId>` comment from an earlier session names a dead agent: never `SendMessage` it — re-spawn from the published branch and its PR.
    - Issues/tracking issues labeled **`status:awaiting-review`** → a previous session stopped holding a PR for a human. Re-check the PR: an approving review landed → resume at the merge it was waiting on; changes requested → route to a fix worker and re-request review; still waiting → carry it in the digest and leave it, don't re-request review on every session.
    - Recently merged batch PRs whose deployment hasn't been confirmed → resume Stage D.
    - Tracking issues labeled **`status:deploy-failed`** → a deployment failed and its fix
@@ -595,7 +595,7 @@ back in `notesForPM`.
    already being built. Measured failing in a live run even with an explicit
    "check the comment exists first" instruction here, which is why it is now a field rather
    than a reminder. Launch with `Agent`,
-   `agentType: "issue-flow:issue-worker"`, **`isolation: "worktree"`**, `name: "worker-<issue>"` (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it; the name keeps it addressable by `SendMessage` for rework), passing only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, **`members` = the batch's member count** — it is how the worker knows whether `crossCheck` may legally be `n/a` — remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md).
+   `subagent_type: "issue-flow:issue-worker"`, **`isolation: "worktree"`** (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it), and **record the `agentId` the spawn result returns** — `SendMessage` to that id is how you reach the worker for rework, corrections and pushed findings. Pass `name: "worker-<issue>"` as well only when the `Agent` tool offers a `name` parameter: it exists only with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (measured on 2.1.285), so address by `agentId` either way. Pass only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, **`members` = the batch's member count** — it is how the worker knows whether `crossCheck` may legally be `n/a` — remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md).
 
    **Never dispatch a build with `subagent_type: "fork"`.** A fork inherits this entire
    session verbatim — the full PM/autonomous-loop instructions, not just the one issue's
@@ -608,7 +608,7 @@ back in `notesForPM`.
    plugin's spawn guard (`hooks/guard-spawn.py`) denies a fork whose prompt is laid out
    as the handoff brief; this paragraph is why, the hook is what holds it.
 
-   **As each member actually launches, complete its held claim**: `forge.issue.status.set <n> status:in-progress` (removes `status:ready`) — this is the swap step 3 deferred, and nothing else performs it. An issue left on `status:ready` while its worker runs re-enters the ready pool at the next triage and can be scheduled twice; the assignee alone does not stop *you*, because the claim CAS only abandons issues assigned to someone **else**.
+   **As each member actually launches, complete its held claim**: `forge.issue.status.set <n> status:in-progress` (removes `status:ready`), and comment `worker launched: <agentId>` on the issue — the id is session-local, for this session's rework and for humans reading along; a later session never messages it (Phase 0 step 12). This is the swap step 3 deferred, and nothing else performs it. An issue left on `status:ready` while its worker runs re-enters the ready pool at the next triage and can be scheduled twice; the assignee alone does not stop *you*, because the claim CAS only abandons issues assigned to someone **else**.
 
    Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
@@ -689,7 +689,7 @@ Triggered by a worker's final notification with its verdict — read it as above
 
   **Standalone/hotfix (`ci: run`) has no sub-merge** — its PR targets dev and runs provider CI. Gate it like a batch PR into dev: the batch-PR column of `prAuthority` (under the default `batch-review`, a human approving review), CI green for the head SHA, threads resolved, criteria evidenced. Merge with `--squash` (C2 step 5's message-and-check rules apply). Then **close the issue**: `Closes #` auto-closes only when dev is the default branch — otherwise close it manually with a comment linking the PR — and clear its lingering status label either way. Remove the worktree, and hand off to Stage D.
 
-  **Anything that goes back to the worker** (an unevidenced criterion, a missed practice, a review comment, a mechanical conflict) goes back by **`SendMessage` to `worker-<issue>`** — it still holds its worktree and its branch, so nothing is re-pointed. Re-spawn only if it is no longer addressable, and then pass `base: <remote>/issue/<n>-<slug>`, never the integration branch: a fresh worker starts on the default branch, and pointing its branch at the integration branch would drop the PR's commits. Keep the worktree until the issue is `status:batched` or terminally parked — **except on `checkpoint`**, which reaps the worktree immediately (the status label is left untouched and the replacement worker gets a fresh tree from the harness; see Stage C1). See [references/issue-worker.md](references/issue-worker.md).
+  **Anything that goes back to the worker** (an unevidenced criterion, a missed practice, a review comment, a mechanical conflict) goes back by **`SendMessage` to the worker's `agentId`** (recorded at launch, Stage B step 5) — it still holds its worktree and its branch, so nothing is re-pointed. Re-spawn only if it is no longer addressable, and then pass `base: <remote>/issue/<n>-<slug>`, never the integration branch: a fresh worker starts on the default branch, and pointing its branch at the integration branch would drop the PR's commits. Keep the worktree until the issue is `status:batched` or terminally parked — **except on `checkpoint`**, which reaps the worktree immediately (the status label is left untouched and the replacement worker gets a fresh tree from the harness; see Stage C1). See [references/issue-worker.md](references/issue-worker.md).
 
 ### C2 — Batch gate (when a batch completes)
 
@@ -793,7 +793,7 @@ between launch and exit, keep orchestrating — never poll it a turn at a time.
 On the watch's verdict:
 
 - **`succeeded`** → the build went green, but **green ≠ working**. Spawn the
-  **deploy-verifier** (`Agent`, `agentType: "issue-flow:deploy-verifier"`) against the
+  **deploy-verifier** (`Agent`, `subagent_type: "issue-flow:deploy-verifier"`) against the
   deployed URL captured in Phase 0. On its verdict:
   - **`verified`** → remove `status:deploying`, comment the confirmation with the
     screenshot ref on the batch PR / tracking issue. Digest + notify (Stage E). Done.

@@ -111,7 +111,7 @@ Push it if either is true:
   the sibling that was already building rediscovered the identical wall minutes later,
   because nobody pushed it.
 
-Push by `SendMessage` to that `worker-<n>`, with the finding quoted and what to do about it —
+Push by `SendMessage` to that worker (its `agentId`), with the finding quoted and what to do about it —
 delivery to a running worker is measured and costs it no turn (see
 [worktrees.md](worktrees.md#messaging-a-worker) and the correction path in
 [collaboration.md](collaboration.md#corrections-reach-work-in-flight)). The PM decides
