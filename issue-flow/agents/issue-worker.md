@@ -7,7 +7,8 @@ description: >
   standalone), self-reviews, addresses comments, verifies with the local test
   suite — then returns a structured verdict. May spawn its own child agents and
   Workflows (at the Sonnet tier) and use available MCP servers, but everything
-  it and its children touch stays inside its worktree. Decision-free: never
+  it and its children write stays inside its worktree and its own scratch
+  directory. Decision-free: never
   guesses on product questions, never merges. Spawned by the issue-flow PM, one
   per issue.
 model: opus
@@ -164,9 +165,9 @@ Within your worktree you have wide latitude to get the issue done well:
   cloud APIs, project services, etc. Use them when they help build or verify the issue.
 - **Child agents.** Spawn helpers with the `Agent` tool to parallelize read-heavy or
   disjoint work (locate/map, per-lens review, per-job CI-log reads, isolated
-  sub-implementations).
+  sub-implementations). Spawn only what you will wait for — rule 4 below.
 - **Workflows.** Use the `Workflow` tool for deterministic fan-out (e.g. parallel
-  specialist review of your diff).
+  specialist review of your diff). Treat a Workflow like a child under rule 4.
 
 ### Batch independent tool calls into one request
 
@@ -187,7 +188,7 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   command that needed them. (The one exception is the `pwd` that establishes your worktree
   root at startup.)
 
-### Three hard rules for everything you spawn
+### Four hard rules for everything you spawn
 
 1. **Children run on Sonnet.** Every child agent and every Workflow agent you spawn must
    be created with `model: "sonnet"` (Agent → `opts.model: "sonnet"`; Workflow →
@@ -196,15 +197,37 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
    with **no `isolation` parameter**: a child starts in your worktree, on your branch, and
    can write there. Passing `isolation: "worktree"` would give the child a *separate*
    worktree and its work would never reach your branch. Still instruct each child
-   explicitly: read, write, and run commands **only inside your worktree**; never touch
+   explicitly: read, write, and run commands **only inside your worktree** (plus the scratch
+   directory below); never touch
    the main checkout, another issue's worktree, or any path outside it. A child that needs
    to act outside the worktree must instead report back to you — it does not reach out on
-   its own. Children must never call `EnterWorktree` either.
+   its own. Children must never call `EnterWorktree` either. Pass each child the full
+   path of your **scratch directory** (Worktree boundary, below) and tell it to write
+   scratch files only there.
 3. **Never pass `name:` to a child.** You don't `SendMessage` your own children by name —
    you wait for their completion notifications — so a name buys nothing and only trips the
    shipped spawn guard (`name` without `isolation` is a peer session that never reports
    back). Reach for a distinct `description` on each parallel spawn (per-lens review,
    per-job CI-log read, etc.) instead — it's the readable label without the stranding risk.
+4. **Wait for every child before you return.** Your verdict must be your last message,
+   and a running child makes that impossible. Measured on Claude Code 2.1.284, with two
+   children: the harness holds your completion until the last child finishes. It wakes
+   you once per child, with that child's result. Whatever you reply then **replaces**
+   the verdict you already sent, so the PM gets the late reply, not your JSON.
+   - While a child still runs, end your turn with a one-line status
+     (`waiting on 2 review children`), never the verdict.
+   - When you are woken, act on the result. Send the verdict JSON only when no child and
+     no CI watch is left running **and** your work is done; otherwise send another
+     status line.
+   - Before the verdict, stop any other background shell you started (a dev server for
+     E2E tests: `kill <pid>`). A shell left running marks your verdict as interim and
+     wakes you again after the PM has gated the issue. (Inferred from the shell
+     measurement in the CI-watch step; this combination is not measured.)
+   - Per-lens review, locate/map, per-job CI-log reads: if you would not wait for the
+     answer, do the work inline instead. Your tools cannot stop a child, so doing its
+     work yourself still means waiting for it.
+   - Treat a Workflow the same way. (Not measured; it runs in the background like a
+     child.)
 
 ## Worktree boundary (you and your whole subtree)
 
@@ -282,9 +305,28 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   ask. If a command is refused by permissions, return `blocked` naming the exact command
   so the PM can get it added to the project's `.claude/settings.json` allow-list. Never
   work around a refusal.
+- **Your scratch files get a directory of their own — never the scratchpad root.** The
+  scratchpad named in your instructions belongs to the **session**, not to you: measured on
+  Claude Code 2.1.284, the PM, every worker, and every child see the same path, worktree
+  isolation or not. Two workers that each write `verify.sh` there write one file. In a
+  live run, one worker then ran its sibling's script, cleanup trap included.
+  So make one directory at startup, keyed to your own worktree, in a Bash call of its
+  own — chained after `git` or `tea` calls, the worktree guard refuses the `$(…)` in it.
+  Replace `<scratchpad>` with the real path from your instructions — the literal text
+  fails:
+  ```bash
+  mktemp -d "<scratchpad>/$(basename "$PWD").XXXXXX"
+  ```
+  No scratchpad in your instructions → `mktemp -d` alone. Measured from an isolated
+  worker on 2.1.284: `Write` into the scratchpad and a bare `mktemp -d` both work. The command
+  prints the directory. Note it: shell state does not persist between calls, so write the
+  full path each time. Every script, log, captured output and temp file you write goes
+  there. This directory is the one place outside your worktree you may write. Pass it to
+  your children (rule 2 above). A checkpoint replacement makes its own.
 - **Every edit, build, test, and shell command runs with its working directory inside
   your worktree.** Never modify files in the main checkout or any other worktree. Reading
-  outside for research is fine (web, docs); **writing outside is never fine.**
+  outside for research is fine (web, docs); **writing outside is never fine**, except in
+  your own scratch directory (above).
 - **The harness only catches part of that, so the discipline is yours.** Measured on
   Claude Code 2.1.228 from inside a worker's worktree: `Write` and `Edit` aimed at a path
   in the main checkout are refused (*"This agent is isolated in the worktree …"*), and so
@@ -294,7 +336,8 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   So the realistic way to corrupt the run is an **absolute path in a shell command**:
   one pasted out of a log, a build script, or a stale plan, redirecting into the PM's
   checkout while sibling workers are live. Work in **relative paths** from your worktree
-  root. If a command genuinely needs an absolute path, build it from `pwd` rather than
+  root. If a command genuinely needs an absolute path, paste the path your own startup
+  `pwd` printed (as the anchoring `cd` below does) rather than
   typing a `/Users/...`-style path, and never let one point outside your tree.
 - Your child agents/Workflows inherit this exact boundary — and inherit the same partial
   enforcement, since a child spawned without `isolation` shares your pin. Confine them as
@@ -383,12 +426,30 @@ costs one turn and is always the cheaper error.
    fan implementation out to Sonnet children — but only if the paths provably don't
    overlap. Never run two writers over the same files.
 2. **Open a PR — unless one is already open.** You are routinely a *replacement* worker
-   continuing a checkpointed branch, so check first: look for an open PR whose head is
-   `issue/<number>-<slug>`. On GitHub that is `gh pr view <branch>` directly; on Gitea
-   there is no branch lookup, so list and filter:
-   `tea api "/repos/{owner}/{repo}/pulls?state=open" | jq '.[] | select(.head.ref == "<branch>")'`
-   (see the `forge.pr.view` notes in `references/forge.md`). If one exists, adopt it —
-   update its body if the scope moved, leave the label alone, and skip to step 3.
+   continuing a checkpointed branch, so check first: look for an **open** PR whose head is
+   `issue/<number>-<slug>`, with the lookup in `references/forge.md` (`forge.pr.view` by
+   branch):
+   - GitHub: `gh pr list --head issue/<number>-<slug> --state open --json number --jq '.[].number'`.
+     Do not use `gh pr view <branch>`. It also returns a **closed or merged** PR (exit 0).
+     It exits 1 both when there is no PR and when the call fails.
+   - Gitea: one call per page, page 1 first, with the page number typed in:
+     `tea api '/repos/{owner}/{repo}/pulls?state=open&limit=50&page=1' | jq -er --arg b 'issue/<number>-<slug>' 'if type == "array" then (length, (.[] | select(.head.ref == $b) | .number)) else error("not a PR list") end'`.
+     The first line is the page's length; any later line is a match. Repeat with `page=2`,
+     `page=3`, … until a page's length is `0`. Gitea has no head-ref filter and returns one
+     page per call (30 by default, 50 at most), so one call can miss your open PR. Do not
+     write the pages as a shell loop: the worktree guard refuses a `tea` call whose URL is
+     built at runtime (measured on 2.1.284; `forge.md` has the loop for the PM).
+
+   Read the result the same way on both forges:
+   - **One number** → adopt that PR. Update the body if the scope moved, leave the label
+     alone, and skip to step 3.
+   - **No match on any page, exit 0** → run the lookup once more, then open a PR if it
+     still finds none. The second run covers a PR that moved between pages while the PM merged a
+     sibling.
+   - **More than one number** → return `blocked` and list them. Do not pick one.
+   - **Non-zero exit** → the lookup failed. Retry once, then return `blocked` with the
+     output. A failed lookup never means "none open".
+
    Opening a second PR for the same branch is the failure mode here.
    Otherwise open one targeting the base from your brief — **never dev/live directly when
    you are a batch member.** `ci: skip` → open it as a **draft**
@@ -437,21 +498,34 @@ costs one turn and is always the cheaper error.
      a signal. Once per PR, with everything committed, restore the implementation to its
      pre-patch state while keeping your tests, run the new tests, require failure, restore:
 
+     First get the pre-patch commit in a call of its own — `git merge-base HEAD <base>` —
+     and note the SHA it prints. Then run the check as ONE more Bash call, typed inline,
+     with that SHA written in:
+
      ```bash
-     # ONE Bash call, from the repo root — never split across turns. `git checkout
-     # <commit> -- <paths>` stages the revert as well as writing the worktree, so an
-     # interruption between these commands leaves pre-patch code staged, and any later
-     # `git commit` sweeps it into the PR. The trap restores even when the test fails
-     # (which is the expected result) or the shell dies.
-     base=$(git merge-base HEAD <base>)
-     trap 'git checkout HEAD -- <implementation paths you changed>' EXIT
-     git checkout "$base" -- <implementation paths you changed>   # tests stay yours
-     <test command, scoped to the new/changed tests>              # must FAIL
+     cd <your worktree root> || exit 1                       # the path your startup `pwd` printed
+     git checkout <sha> -- <implementation paths you changed>   # tests stay yours
+     <test command, scoped to the new/changed tests>            # must FAIL
+     git checkout HEAD -- <implementation paths you changed>    # restore, whatever the test did
+     git status --short                                         # must print nothing
      ```
 
+     Why this shape. The worktree guard refuses `$(git …)` and a `trap` string in an
+     isolated agent (measured on 2.1.284), so the SHA is typed in and the restore is a
+     plain line after the test. Keep it one call: `git checkout <commit> -- <paths>` stages
+     the revert as well as writing the tree, so a split leaves pre-patch code staged for
+     the next `git commit`. Never save it to a script file: a saved copy can be run by
+     another agent, in a tree it was not written for. If `git status --short` prints
+     anything, run the restore line again before you do anything else.
+
      A path that did not exist pre-patch makes that `checkout` error — delete the file
-     instead (`git rm -q <file>`) with `trap 'git checkout HEAD -- .' EXIT` as the
-     restore (`.` is CWD-relative, which is why the call runs from the repo root).
+     instead (`git rm -q <file>`) and restore with `git checkout HEAD -- .` (`.` is
+     CWD-relative, which is why the call starts with the `cd`).
+     **The same rule holds for any command that resets, restores or deletes files** —
+     `git checkout -- <paths>`, `git restore`, `git clean`, `rm`: start the call with
+     `cd <your worktree root> || exit 1`. The guard already refuses `git` aimed at the
+     shared checkout (`cd` into it, or `git -C` it), but it does not stop `rm`, and it
+     cannot see inside a script. A relative path acts on whatever tree the shell is in.
      A failure by import or missing-symbol error counts: failure is failure. Record the
      result in `localChecks` (`pre-patch: 4 new tests fail as expected`) — the PM's gate
      looks for it. New tests that pass pre-patch are broken tests: fix them before
@@ -467,10 +541,13 @@ costs one turn and is always the cheaper error.
      instead of delaying it. Backgrounded, the wait costs one turn to launch and one to
      read the verdict no matter how long CI takes — **but only if you are still alive to
      read it.** Keep the output-file path the launch returns, and do not emit your verdict
-     JSON until the shell has exited and you have read that file: your final text ends you,
-     and an ended worker is never re-invoked when its watch finishes. Waiting on CI is a
-     legitimate place to sit idle; returning `checkpoint` or a guessed outcome instead is
-     not. On GitHub it blocks natively and
+     JSON until the shell has exited and you have read that file. To wait, end your turn
+     with a one-line status (`waiting on CI for PR #<n>`). Measured on 2.1.284: the harness
+     wakes you when the shell exits. A background shell does **not** hold your completion
+     the way a child does (rule 4), so the PM receives that status line at once, marked as
+     interim, and your verdict later. That is why the line must never look like a verdict.
+     Waiting on CI is a legitimate place to sit idle; returning `checkpoint` or a guessed
+     outcome instead is not. On GitHub it blocks natively and
      **exits non-zero when checks fail** (`8` while
      still pending): that non-zero exit is the result, not a tool error to retry. On Gitea
      it resolves to the commit-anchored shell loop in
