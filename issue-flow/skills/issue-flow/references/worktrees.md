@@ -127,7 +127,10 @@ Two consequences the PM should treat as load-bearing:
    environment **at session start**: put `"env": {"ISSUE_FLOW_SPAWN_GUARD": "off"}` in a
    project's `.claude/settings.json` where named peer sessions are wanted deliberately
    (exporting it from a tool call does nothing). `ask` exists but is interactive-only —
-   a background agent hangs on the prompt, which is worse than the refusal.
+   a background agent hangs on the prompt, which is worse than the refusal. The same
+   hook also denies a `subagent_type: "fork"` spawn that carries the handoff brief
+   (SKILL.md Stage B step 5), under its own switch, `ISSUE_FLOW_FORK_GUARD`, so turning
+   named peers back on does not turn fork dispatch back on.
 2. **Unnamed un-isolated helpers are reachable and do notify.** `code-auditor`,
    `ux-explorer`, `deploy-verifier` and `review-scribe` are spawned without isolation and
    are *not* peer sessions: they fire completion notifications and they accept a mid-run

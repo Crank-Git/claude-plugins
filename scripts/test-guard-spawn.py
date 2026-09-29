@@ -25,6 +25,7 @@ def run(payload, env=None):
     """Return the parsed hook output, or None when it allowed the call."""
     environment = dict(os.environ)
     environment.pop("ISSUE_FLOW_SPAWN_GUARD", None)
+    environment.pop("ISSUE_FLOW_FORK_GUARD", None)
     environment.update(env or {})
     result = subprocess.run(
         [sys.executable, HOOK],
@@ -146,6 +147,135 @@ expect("an empty payload allows the call", {}, False)
 expect("a null tool_input allows the call", {"tool_name": "Agent", "tool_input": None}, False)
 expect("a string tool_input allows the call", {"tool_name": "Agent", "tool_input": "x"}, False)
 expect("empty stdin allows the call", "", False)
+
+# --- fork dispatch of a build (issue #50) -------------------------------------
+TEMPLATE = os.path.join(
+    ROOT, "issue-flow", "skills", "issue-flow", "references", "issue-worker.md"
+)
+
+
+def handoff_brief():
+    """The real handoff-brief template, so a template change cannot blind the guard."""
+    text = open(TEMPLATE, encoding="utf-8").read()
+    start = text.index("## Handoff brief")
+    block = text[text.index("```", start) + 3 :]
+    return block[block.index("\n") + 1 : block.index("```")]
+
+
+BRIEF = handoff_brief()
+if "crossCheck:" not in BRIEF or "base:" not in BRIEF:
+    failures.append(f"could not extract the handoff brief from {TEMPLATE}")
+
+
+def fork(prompt, **extra):
+    return spawn(subagent_type="fork", description="build #42", prompt=prompt, **extra)
+
+
+output = expect("a fork carrying the handoff brief is denied", fork(BRIEF), True)
+if output:
+    reason = output["hookSpecificOutput"]["permissionDecisionReason"]
+    for expected in ("issue-flow:issue-worker", "ISSUE_FLOW_FORK_GUARD", "`crossCheck:`"):
+        if expected not in reason:
+            failures.append(f"the fork deny reason should mention {expected!r}: {reason[:200]}")
+expect(
+    "a hand-written brief with list and bold markup is denied",
+    fork("Build issue #42.\n- **base:** origin/epic/7-x\n- **ci:** skip\n- **members:** 3\n"),
+    True,
+)
+expect("the fork type is matched case-insensitively", spawn(subagent_type=" Fork ", prompt=BRIEF), True)
+expect("a plain fork is allowed", fork("Summarize the diff and stop."), False)
+expect(
+    "a fork describing a failing build is not a brief",
+    fork("Issue: #12 keeps failing.\nBranch: fix/x\nCI: red on lint\nFind out why."),
+    False,
+)
+expect(
+    "two issue-flow labels alone do not make a brief",
+    fork("crossCheck: see above\nmembers: 2\nNow explain the batch model."),
+    False,
+)
+expect(
+    "the brief sent to issue-worker is the correct dispatch",
+    spawn(
+        subagent_type="issue-flow:issue-worker",
+        name="worker-42",
+        isolation="worktree",
+        prompt=BRIEF,
+    ),
+    False,
+)
+expect(
+    "the general-purpose fallback carrying the brief is allowed",
+    spawn(subagent_type="general-purpose", prompt=BRIEF),
+    False,
+)
+expect(
+    "labels mid-line are not brief fields",
+    fork("Note the issue: base: ci: members: are all mentioned inline here."),
+    False,
+)
+
+# review round 1: the ways a model re-lays the template out are still a brief
+for label, prompt in {
+    "a numbered list": "1. issue: #42\n2. base: origin/dev\n3. crossCheck: n/a\n",
+    "markdown headings": "## Issue: #42\n## Base: origin/dev\n## Members: 1\n",
+    "a table": "| field | value |\n|---|---|\n| issue | #42 |\n| base | dev |\n| members | 1 |\n",
+    "pretty-printed JSON": '{\n  "issue": 42,\n  "base": "origin/dev",\n  "crossCheck": "n/a"\n}',
+    "= separators": "issue = #42\nbase = origin/dev\nsteRule = x\n",
+    "a spelled-out cross-check": "Issue: #42\nBase: origin/dev\nCross-check: n/a\n",
+    "a space before the colon": "issue : #42\nbase : dev\nforge : {type: gitea}\n",
+    "capitalized labels only": "Issue: #42\nBase: dev\nCrossCheck: n/a\n",
+}.items():
+    expect(f"a brief laid out as {label} is denied", fork(prompt), True)
+
+# a named, un-isolated fork trips both checks; the fork reason must win
+output = run(fork(BRIEF, name="worker-42"))
+reason = output["hookSpecificOutput"]["permissionDecisionReason"] if output else ""
+if "issue-flow:issue-worker" not in reason:
+    failures.append("a named build fork must be refused for the fork, not the name")
+
+# known, documented false positive: a fork asked to discuss the brief's fields
+expect(
+    "a fork quoting the brief one field per line is denied (documented)",
+    fork("Explain these fields:\n- issue:\n- base:\n- members:\n"),
+    True,
+)
+
+# --- the two checks have separate switches ------------------------------------
+expect(
+    "ISSUE_FLOW_FORK_GUARD=off allows a build fork",
+    fork(BRIEF),
+    False,
+    env={"ISSUE_FLOW_FORK_GUARD": "off"},
+)
+expect(
+    "ISSUE_FLOW_FORK_GUARD=off allows a plain fork",
+    fork("Summarize the diff."),
+    False,
+    env={"ISSUE_FLOW_FORK_GUARD": "off"},
+)
+expect(
+    "turning off the name check leaves the fork check on",
+    fork(BRIEF),
+    True,
+    env={"ISSUE_FLOW_SPAWN_GUARD": "off"},
+)
+expect(
+    "turning off the fork check leaves the name check on",
+    spawn(name="reviewer", prompt="x"),
+    True,
+    env={"ISSUE_FLOW_FORK_GUARD": "off"},
+)
+asked = run(fork(BRIEF), env={"ISSUE_FLOW_FORK_GUARD": "ask"})
+if not asked or asked["hookSpecificOutput"].get("permissionDecision") != "ask":
+    failures.append(f"fork ask mode should ask, not deny: {asked}")
+elif "approve only if deliberate" not in asked["hookSpecificOutput"]["permissionDecisionReason"]:
+    failures.append("the fork ask reason should say to approve only if deliberate")
+
+# --- fork check fails open too ------------------------------------------------
+expect("a fork with no prompt allows the call", spawn(subagent_type="fork"), False)
+expect("a fork with a non-string prompt allows the call", spawn(subagent_type="fork", prompt=42), False)
+expect("a non-string subagent_type allows the call", spawn(subagent_type=["fork"], prompt=BRIEF), False)
 
 if failures:
     for failure in failures:

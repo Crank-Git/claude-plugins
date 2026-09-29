@@ -604,7 +604,9 @@ back in `notesForPM`.
    own for 52 minutes, claiming and building two more issues from a different epic,
    running its own batch review, and merging everything straight to `dev` — all without
    the actual PM claiming, planning, cross-checking, or gating any of it. `issue-worker`
-   is a fresh agent with no PM context; it only ever does what its brief says.
+   is a fresh agent with no PM context; it only ever does what its brief says. The
+   plugin's spawn guard (`hooks/guard-spawn.py`) denies a fork whose prompt is laid out
+   as the handoff brief; this paragraph is why, the hook is what holds it.
 
    **As each member actually launches, complete its held claim**: `forge.issue.status.set <n> status:in-progress` (removes `status:ready`) — this is the swap step 3 deferred, and nothing else performs it. An issue left on `status:ready` while its worker runs re-enters the ready pool at the next triage and can be scheduled twice; the assignee alone does not stop *you*, because the claim CAS only abandons issues assigned to someone **else**.
 
