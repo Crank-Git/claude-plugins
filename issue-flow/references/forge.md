@@ -175,7 +175,10 @@ by its head ref. Measured on gh 2.88.1, Gitea 1.25.3 and tea 0.15.1:
   "none" while one is open: measured with 55 open PRs, the oldest branch's PR was not found.
   `tea api` also exits 0 on an API error and prints the error object, so check the shape.
   Page until an empty page — a short page is not proof of the end, because the cap is
-  per-server:
+  per-server. This loop is for the PM. **A worker cannot run it:** in a worktree-isolated
+  agent the guard refuses a `tea` call whose URL is built at runtime (`page=$page`) —
+  measured on Claude Code 2.1.284. A worker makes one call per page with the number typed
+  in (`agents/issue-worker.md`, runbook step 2). The PM's loop:
 
   ```bash
   page=1

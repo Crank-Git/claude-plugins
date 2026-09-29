@@ -334,8 +334,8 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   So the realistic way to corrupt the run is an **absolute path in a shell command**:
   one pasted out of a log, a build script, or a stale plan, redirecting into the PM's
   checkout while sibling workers are live. Work in **relative paths** from your worktree
-  root. If a command genuinely needs an absolute path, build it from `pwd` (or paste the
-  path your own startup `pwd` printed, as the anchoring `cd` below does) rather than
+  root. If a command genuinely needs an absolute path, paste the path your own startup
+  `pwd` printed (as the anchoring `cd` below does) rather than
   typing a `/Users/...`-style path, and never let one point outside your tree.
 - Your child agents/Workflows inherit this exact boundary — and inherit the same partial
   enforcement, since a child spawned without `isolation` shares your pin. Confine them as
@@ -430,14 +430,19 @@ costs one turn and is always the cheaper error.
    - GitHub: `gh pr list --head issue/<number>-<slug> --state open --json number --jq '.[].number'`.
      Do not use `gh pr view <branch>`. It also returns a **closed or merged** PR (exit 0).
      It exits 1 both when there is no PR and when the call fails.
-   - Gitea: the paging loop in `forge.md`. Gitea has no head-ref filter. One call returns
-     one page (30 by default, 50 at most), so an unpaged call can miss your open PR.
+   - Gitea: one call per page, page 1 first, with the page number typed in:
+     `tea api '/repos/{owner}/{repo}/pulls?state=open&limit=50&page=1' | jq -er --arg b 'issue/<number>-<slug>' 'if type == "array" then (length, (.[] | select(.head.ref == $b) | .number)) else error("not a PR list") end'`.
+     The first line is the page's length; any later line is a match. Repeat with `page=2`,
+     `page=3`, … until a page's length is `0`. Gitea has no head-ref filter and returns one
+     page per call (30 by default, 50 at most), so one call can miss your open PR. Do not
+     write the pages as a shell loop: the worktree guard refuses a `tea` call whose URL is
+     built at runtime (measured on 2.1.284; `forge.md` has the loop for the PM).
 
    Read the result the same way on both forges:
    - **One number** → adopt that PR. Update the body if the scope moved, leave the label
      alone, and skip to step 3.
-   - **Empty output, exit 0** → run the lookup once more, then open a PR if it is still
-     empty. The second run covers a PR that moved between pages while the PM merged a
+   - **No match on any page, exit 0** → run the lookup once more, then open a PR if it
+     still finds none. The second run covers a PR that moved between pages while the PM merged a
      sibling.
    - **More than one number** → return `blocked` and list them. Do not pick one.
    - **Non-zero exit** → the lookup failed. Retry once, then return `blocked` with the
@@ -491,28 +496,34 @@ costs one turn and is always the cheaper error.
      a signal. Once per PR, with everything committed, restore the implementation to its
      pre-patch state while keeping your tests, run the new tests, require failure, restore:
 
+     First get the pre-patch commit in a call of its own — `git merge-base HEAD <base>` —
+     and note the SHA it prints. Then run the check as ONE more Bash call, typed inline,
+     with that SHA written in:
+
      ```bash
-     # ONE Bash call, typed inline. Never save it to a script file: a saved copy can
-     # be run by another agent, and its trap then resets that agent's tree. Never
-     # split it across turns: `git checkout <commit> -- <paths>` stages the revert as
-     # well as writing the worktree, so an interruption leaves pre-patch code staged,
-     # and a later `git commit` sweeps it into the PR. The trap restores even when the
-     # test fails (the expected result) or the shell dies.
-     cd <your worktree root> && [ "$(git branch --show-current)" = "issue/<number>-<slug>" ] \
-       || exit 1     # the path your startup `pwd` printed; the branch check stops a wrong tree
-     base=$(git merge-base HEAD <base>)
-     trap 'git checkout HEAD -- <implementation paths you changed>' EXIT
-     git checkout "$base" -- <implementation paths you changed>   # tests stay yours
-     <test command, scoped to the new/changed tests>              # must FAIL
+     cd <your worktree root> || exit 1                       # the path your startup `pwd` printed
+     git checkout <sha> -- <implementation paths you changed>   # tests stay yours
+     <test command, scoped to the new/changed tests>            # must FAIL
+     git checkout HEAD -- <implementation paths you changed>    # restore, whatever the test did
+     git status --short                                         # must print nothing
      ```
 
+     Why this shape. The worktree guard refuses `$(git …)` and a `trap` string in an
+     isolated agent (measured on 2.1.284), so the SHA is typed in and the restore is a
+     plain line after the test. Keep it one call: `git checkout <commit> -- <paths>` stages
+     the revert as well as writing the tree, so a split leaves pre-patch code staged for
+     the next `git commit`. Never save it to a script file: a saved copy can be run by
+     another agent, in a tree it was not written for. If `git status --short` prints
+     anything, run the restore line again before you do anything else.
+
      A path that did not exist pre-patch makes that `checkout` error — delete the file
-     instead (`git rm -q <file>`) with `trap 'git checkout HEAD -- .' EXIT` as the
-     restore (`.` is CWD-relative, which is why the block starts with the `cd`).
+     instead (`git rm -q <file>`) and restore with `git checkout HEAD -- .` (`.` is
+     CWD-relative, which is why the call starts with the `cd`).
      **The same rule holds for any command that resets, restores or deletes files** —
-     `git checkout -- <paths>`, `git restore`, `git clean`, `rm`: start the call with the
-     same `cd … && [ branch check ] || exit 1` line. A relative path acts on whatever tree
-     the shell is in, and that is only yours if you put it there.
+     `git checkout -- <paths>`, `git restore`, `git clean`, `rm`: start the call with
+     `cd <your worktree root> || exit 1`. The guard already refuses `git` aimed at the
+     shared checkout (`cd` into it, or `git -C` it), but it does not stop `rm`, and it
+     cannot see inside a script. A relative path acts on whatever tree the shell is in.
      A failure by import or missing-symbol error counts: failure is failure. Record the
      result in `localChecks` (`pre-patch: 4 new tests fail as expected`) — the PM's gate
      looks for it. New tests that pass pre-patch are broken tests: fix them before

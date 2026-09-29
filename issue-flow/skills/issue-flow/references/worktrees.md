@@ -115,6 +115,22 @@ Measured on 2.1.284 (isolated parents; unnamed un-isolated children that slept 2
   an interim notification the PM must not read as a verdict (SKILL.md, *Reading a worker
   notification*). This replaces
   the earlier note that an ended worker is never re-invoked when its watch finishes.
+- **The worktree guard reads every `Bash` command an isolated agent runs, and refuses
+  what it cannot prove stays in the tree.** Measured with no user hooks
+  (`--setting-sources project,local`), one command per call:
+
+  | Allowed | Refused |
+  |---|---|
+  | plain `git …`, `&&` / `;` chains, `git` inside `if` | `$(git …)` anywhere, e.g. `base=$(git merge-base …)` |
+  | `cd <own root> \|\| exit 1; …`, `git -C <own root>` | `cd` into the shared checkout, `git -C <shared checkout>` |
+  | literal `tea api '…' \| jq …`, also inside `for` | `tea` with a URL built at runtime (`page=$page`), or inside `$(…)` or a `while` loop |
+  | `git checkout <sha> -- <paths>`, `bash <script>`, `rm` (even outside the tree) | a `trap '…'` string |
+
+  A `PreToolUse` hook that rewrites commands changes what the guard sees. With a hook
+  that turns every `git …` into `<wrapper> git …`, every `git` call a worker made was
+  refused ("runs <wrapper> with a git command among its operands"), and one worker could
+  only proceed through `/usr/bin/git`. The runbook forms in `agents/issue-worker.md` are
+  the allowed shapes; the PM runs on the main thread and is not guarded this way.
 
 ## Messaging a worker
 
