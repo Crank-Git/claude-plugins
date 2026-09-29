@@ -310,8 +310,10 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   Claude Code 2.1.284, the PM, every worker, and every child see the same path, worktree
   isolation or not. Two workers that each write `verify.sh` there write one file. In a
   live run, one worker then ran its sibling's script, cleanup trap included.
-  So make one directory at startup, keyed to your own worktree. Replace `<scratchpad>`
-  with the real path from your instructions — the literal text fails:
+  So make one directory at startup, keyed to your own worktree, in a Bash call of its
+  own — chained after `git` or `tea` calls, the worktree guard refuses the `$(…)` in it.
+  Replace `<scratchpad>` with the real path from your instructions — the literal text
+  fails:
   ```bash
   mktemp -d "<scratchpad>/$(basename "$PWD").XXXXXX"
   ```
