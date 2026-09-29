@@ -126,7 +126,7 @@ dev ◄────────────────────────�
 ships a `SessionStart` hook (`hooks/preflight.py`) that, in a repo with a committed
 `.issue-flow.json`, has already run `git fetch` and put an `issue-flow preflight:` block
 into your context: remote name, default branch, live `epic/*`/`batch/*` branches,
-leftover worktrees, missing standard labels, and — when the forge CLI answered — open PRs
+worktrees from an earlier session (check each issue's status before removing one — step 12), missing standard labels, and — when the forge CLI answered — open PRs
 and parked issues. Hooks cost CPU, not inference, and the fetch it already ran is what
 kills the stale-ref failure class measured in live runs. When the block is present, do
 not re-derive those facts with your own tool calls: verify anything surprising, then

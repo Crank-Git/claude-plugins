@@ -3,7 +3,7 @@
 
 Wired by `issue-flow/hooks/hooks.json`. Phase 0 of the issue-flow skill opens with a
 dozen steps, and several are pure bookkeeping — detect the remote, fetch it, list the
-live integration branches, find leftover worktrees, compare the labels against the
+live integration branches, list worktrees from an earlier session, compare the labels against the
 standard set, list what is parked. Re-deriving those with tool calls costs inference
 every session; a hook costs CPU once, before the first turn. The fetch it runs is also
 the mechanical fix for the stale-ref failure class the skill documents (a locate pass
@@ -284,8 +284,17 @@ def digest(cwd):
         lines.append("- remote: none detected (no fetch run)")
 
     leftovers = leftover_worktrees(root)
+    # Not "leftovers": a parked issue's tree is kept on purpose (SKILL.md Phase 0
+    # step 12), and only the tracker knows which issues are parked.
     lines.append(
-        "- leftover worktrees: " + ("; ".join(leftovers) if leftovers else "none")
+        "- worktrees from an earlier session: "
+        + (
+            "; ".join(leftovers)
+            + " — check each issue's status before removing: a parked issue's tree"
+            " is kept on purpose (SKILL.md Phase 0 step 12)"
+            if leftovers
+            else "none"
+        )
     )
     lines.extend(forge_lines(root, config))
     lines.append(
