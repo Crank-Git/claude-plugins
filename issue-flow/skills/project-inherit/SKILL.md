@@ -113,6 +113,9 @@ question budget is smaller, because the code answered the mechanical half. Ask a
    debt worth paying down. This becomes the `planned` half of the spec.
 5. **Branch model and deploy facts** you could not detect — asked exactly as
    `project-planner` Phase 1 asks them (`branch_model` lands in the front-matter).
+6. **Visibility** — asked as `project-planner` Phase 1 asks it. On a public repo this
+   question comes first: committing the spec there publishes it. Under `mirrored`,
+   `/repo-mirror convert` runs before the spec is pushed.
 
 Never ask what a survey agent, a document, or a convention can answer. Anything
 non-critical still unknown becomes a documented assumption.

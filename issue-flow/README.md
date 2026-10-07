@@ -70,7 +70,7 @@ self-hosted Gitea with its own runner has no such ceiling.
 
 The full operation mapping is in [references/forge.md](references/forge.md).
 
-## The six skills
+## The seven skills
 
 ### `/project-planner`
 
@@ -186,6 +186,23 @@ the E2E tests, and starts three kinds of sub-agent:
 **The review fixes nothing.** The PM collects every report, files a `review:finding` issue
 for each finding that passes the filing gate below, routes the rest to the deliverables PR
 or the run ledger, and then asks you to launch `/issue-flow` on the new backlog.
+
+### `/repo-mirror`
+
+Keeps the specs, issues and PRs private while the code stays public. A private repo holds
+everything; a GitHub Actions job publishes a filtered copy to a public mirror, without
+`docs/specs/`, `docs/adr/`, `CLAUDE.md` and `.claude/`. The filter is deterministic, so
+the job never force-pushes.
+
+- **setup** — a new private repo and its public mirror. The planner hands off here when
+  you choose `visibility: mirrored`.
+- **convert** — an existing public repo becomes the mirror (it keeps its stars), a new
+  `<name>-private` repo becomes the source of truth, and the specs leave the public
+  history. A full dry run and a written report come first; nothing changes on GitHub
+  until you approve the report.
+- **import** — brings an outside contributor's PR from the mirror into the private repo.
+
+GitHub only. A rewrite cannot recall what forks and clones already hold.
 
 ## What earns an issue
 

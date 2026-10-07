@@ -1,0 +1,61 @@
+name: Mirror
+
+# Publishes the filtered history of this private repo to its public mirror. The
+# excluded paths, the mirrored branches and the issue-reference cutover are in
+# .github/mirror/config.json; the filter is .github/mirror/mirror_filter.py.
+#
+# The push never uses --force. The filter is deterministic, so a normal sync only
+# adds commits to the mirror. A rejected push means the mirror diverged from this
+# repo: stop and find out why, do not overwrite it.
+#
+# Secret MIRROR_DEPLOY_KEY: the private half of a deploy key that has write access
+# on the public repo. Pushes with a deploy key start the public repo's workflows,
+# so a tag pushed here releases from the public repo.
+
+on:
+  push:
+    branches: [__BRANCHES__]
+    tags: ['*']
+  workflow_dispatch:
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    if: github.repository == '__PRIVATE__'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The version is pinned: a different filter-repo version can give different
+      # hashes, and the mirror then refuses the push.
+      - name: Install git-filter-repo
+        run: pip install --quiet git-filter-repo==2.47.0
+
+      - name: Build the filtered history
+        run: python3 .github/mirror/mirror_filter.py filter --config .github/mirror/config.json --source . --out "$RUNNER_TEMP/mirror"
+
+      - name: Check that no excluded path remains
+        run: python3 .github/mirror/mirror_filter.py check --config .github/mirror/config.json --repo "$RUNNER_TEMP/mirror"
+
+      - name: Push to the public mirror
+        env:
+          MIRROR_DEPLOY_KEY: ${{ secrets.MIRROR_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/mirror_key"
+          printf '%s\n' "$MIRROR_DEPLOY_KEY" > "$key"
+          chmod 600 "$key"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git -C "$RUNNER_TEMP/mirror" push git@github.com:__PUBLIC__.git 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'

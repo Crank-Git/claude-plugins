@@ -86,7 +86,7 @@ becomes a question or an open-questions entry, never an invention.
    - Missing `docs/adr/` (template), `docs/external.md`, `.claude/rules/quality.md`,
      `.claude/rules/ste.md`: scaffold per `scaffold.md` — proposing before writing
      anything under `.claude/`, as always.
-   - Front-matter drift: missing `branch_model`, `spec_version`, `html_generated`,
+   - Front-matter drift: missing `branch_model`, `visibility`, `spec_version`, `html_generated`,
      feature `id`s, or a `features:` list that disagrees with the directory. Ask for
      anything you cannot derive (a wrong `branch_model` guess would misroute every
      batch).

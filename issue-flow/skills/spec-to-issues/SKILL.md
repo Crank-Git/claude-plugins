@@ -61,6 +61,9 @@ resolved in [../../references/forge.md](../../references/forge.md).
 - `forge.auth.check`; `forge.repo.view` (no repo/remote → same bootstrap flow as
   issue-flow Phase 0: offer `git init` / `forge.repo.create`, confirm public/private).
   Write the resolved `owner/name` back to `spec.md`'s `repo:` front-matter field.
+- **`visibility: mirrored` → the repo must be private.** Issue bodies quote the spec
+  verbatim. If `forge.repo.view` shows a public repo, stop: the issues belong in the
+  private repo (`/repo-mirror`), not in the mirror.
 - **The spec must be committed and pushed.** Issue bodies link `docs/specs/...` paths,
   and issue-flow's workers run in git worktrees that contain tracked files only — an
   unpushed spec means dead links and blind workers. Check for uncommitted or unpushed
