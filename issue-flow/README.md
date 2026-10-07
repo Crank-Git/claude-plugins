@@ -196,10 +196,12 @@ the job never force-pushes.
 
 - **setup** — a new private repo and its public mirror. The planner hands off here when
   you choose `visibility: mirrored`.
-- **convert** — an existing public repo becomes the mirror (it keeps its stars), a new
-  `<name>-private` repo becomes the source of truth, and the specs leave the public
-  history. A full dry run and a written report come first; nothing changes on GitHub
-  until you approve the report.
+- **convert** — an existing public repo moves to that model, and the specs leave the
+  public history. Two routes: the existing repo becomes the mirror and keeps its stars,
+  or — for a repo with no forks and few stars — it is renamed and made private, so its
+  issues and PRs go private in one step, and a new public repo takes its name. A full
+  dry run and a written report come first; nothing changes on GitHub until you approve
+  the report.
 - **import** — brings an outside contributor's PR from the mirror into the private repo.
 
 GitHub only. A rewrite cannot recall what forks and clones already hold.

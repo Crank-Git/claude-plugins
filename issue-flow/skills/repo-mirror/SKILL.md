@@ -1,6 +1,6 @@
 ---
 name: repo-mirror
-description: Keep a project's specs, issues and PRs private while publishing its code to a public mirror. Use when the user says "/repo-mirror", "make the specs private", "set up a public mirror", "mirror this repo", "convert this repo to private + public mirror", "clean the specs out of the public repo", or "import a PR from the mirror". Three modes - setup (a new private repo plus a filtered public mirror kept in sync by a GitHub Actions job), convert (move an existing public repo to that model and remove the specs from its history, always behind a full dry run and an explicit go-ahead), and import (bring an outside contributor's PR from the public mirror into the private repo). GitHub only.
+description: Keep a project's specs, issues and PRs private while publishing its code to a public mirror. Use when the user says "/repo-mirror", "make the specs private", "set up a public mirror", "mirror this repo", "convert this repo to private + public mirror", "clean the specs out of the public repo", or "import a PR from the mirror". Three modes - setup (a new private repo plus a filtered public mirror kept in sync by a GitHub Actions job), convert (move an existing public repo to that model and remove the specs from its history - either the existing repo becomes the mirror, or, for a repo with no forks and few stars, it is renamed and made private and a new public repo takes its name; always behind a full dry run and an explicit go-ahead), and import (bring an outside contributor's PR from the public mirror into the private repo). GitHub only.
 ---
 
 # Repo mirror — private source of truth, filtered public mirror
@@ -76,11 +76,29 @@ between them.** Phase A only reads and writes to the scratch directory. Phase B 
 only when the user has read the Phase A report and says go — and approval of Phase A is
 not approval of Phase B.
 
-### Why the repo is not just made private
+### Two routes
 
-Making a public GitHub repo private permanently erases its stars and watchers and splits
-off its forks. So the existing repo stays where it is and becomes the **mirror**; a new
-`<name>-private` repo becomes the source of truth.
+Making a public GitHub repo private permanently erases its stars and watchers, and its
+forks stay public as separate repos. That decides the route.
+
+- **Mirror route (the default).** The existing repo stays public and becomes the
+  **mirror**; a new `<name>-private` repo becomes the source of truth. It keeps the stars
+  and the fork network. Its costs: the issues must be transferred (they get new numbers),
+  and the PRs stay public — a PR cannot be transferred or deleted by the owner, so diffs
+  and bodies that show private material stay readable until GitHub Support removes them.
+- **Flip route (rename and recreate).** The existing repo is renamed to `<name>-private`
+  and made private; a new public repo is created under the old name and receives the
+  filtered history. Every issue and PR becomes private in one step, with its number
+  unchanged — nothing to transfer, no PR exposure, no Support request. Its costs: the
+  stars and watchers are lost, and the new public repo starts bare — its settings,
+  secrets, environments, rulesets, releases and outside integrations must be set up
+  again.
+
+**The flip route requires zero forks.** A fork keeps the full history public no matter
+what happens to the parent, so with a fork the flip hides nothing that the mirror route
+does not. With zero forks, offer the flip route when the stars are few enough that the
+user accepts losing them — that threshold is the user's call, not yours. Otherwise use
+the mirror route.
 
 ### Phase A — dry run
 
@@ -122,16 +140,36 @@ Work in the scratch directory. Change nothing on GitHub.
     them.
 11. **Forks.** Each fork, with its creation date against the date the specs first
     appeared. Forks made after it hold a copy, and nothing can recall it. Say so plainly.
-12. **The plan.** Write `convert-report.md` in the scratch directory: every finding
+12. **Route.** Stars, watchers and forks decide it (see Two routes). With zero forks,
+    present both routes with their costs and recommend one. For the flip route, also
+    list what the new public repo must get again: description, homepage and topics;
+    secret and variable names; environments (`gh api repos/<repo>/environments`);
+    rulesets and branch protection; webhooks (`gh api repos/<repo>/hooks`); Pages;
+    releases with their notes and assets (`gh release list`); and outside integrations
+    that are connected to the repo (Cloudflare or Vercel deploys, npm trusted
+    publishing, Codecov, other GitHub Apps) — the API cannot list all of these, so ask
+    the user. Under either route, a package published **with provenance** names commit
+    hashes that the rewrite removes, so its "source commit" links go dead; say so.
+13. **The plan.** Write `convert-report.md` in the scratch directory: every finding
     above, the exact Phase B commands in order with real values filled in, the user
     decisions still open, and a draft GitHub Support request (sensitive-data removal:
     the repo, the PR numbers from step 10, a request to purge cached views and
-    unreachable commits). Show the user the report. Stop.
+    unreachable commits — mirror route only). Show the user the report. Stop.
 
 ### Phase B — execute (only on the user's explicit go)
 
 Re-run step 1 and steps 3–4 first if anything was pushed to the public repo since
-Phase A. Then, in order, confirming any step the report left open:
+Phase A. Then follow the route the user chose, in order, confirming any step the report
+left open.
+
+**Turn Actions off on the public repo around every history push.** A push of rewritten
+or new tags starts the public repo's tag-triggered workflows — releases and package
+publishes — once per tag. Before the push:
+`gh api -X PUT repos/<public>/actions/permissions -F enabled=false`. After it, and after
+the publishing workflows carry the repository guard:
+`gh api -X PUT repos/<public>/actions/permissions -F enabled=true`.
+
+#### Mirror route
 
 1. **Freeze.** Ask the user to merge nothing and push nothing to the public repo until
    step 6 is done.
@@ -142,9 +180,9 @@ Phase A. Then, in order, confirming any step the report left open:
 3. **Install** the setup files on every mirrored branch of the private repo (setup steps
    2–3), with `cutover` = now.
 4. **Filter** the private repo locally with the pinned filter-repo, then `check`.
-5. **Force-push** the result to the public repo: each mirrored branch and every tag with
-   `--force`, then delete the public branches the mirror does not keep. This is the one
-   force-push in the life of the mirror.
+5. **Force-push** the result to the public repo, with its Actions off: each mirrored
+   branch and every tag with `--force`, then delete the public branches the mirror does
+   not keep. This is the one force-push in the life of the mirror. Turn Actions back on.
 6. **Deploy key** (setup step 4), then run the `Mirror` workflow by hand
    (`gh workflow run mirror.yml -R <private>`). It must report every ref up to date. If
    it pushes anything, CI and the local run disagree — stop and investigate.
@@ -155,6 +193,38 @@ Phase A. Then, in order, confirming any step the report left open:
    Hand them the draft; do not submit it for them.
 10. **Verify.** The public repo's default branch shows no excluded path; its releases
     still list their assets; `check` passes on a fresh clone of the public repo.
+
+#### Flip route
+
+1. **Freeze**, as in the mirror route.
+2. **Save the releases.** For each release: `gh release view <tag> -R <repo> --json
+   name,body,isPrerelease,isDraft` and `gh release download <tag> -R <repo> -D
+   <scratch>/releases/<tag>`. The new public repo has no releases until step 7.
+3. **Rename and make private.** `gh repo rename <name>-private -R <owner>/<name>`, then
+   `gh repo edit <owner>/<name>-private --visibility private
+   --accept-visibility-change-consequences`. The issues, PRs, secrets, Actions history
+   and settings stay with this repo.
+4. **Install** the setup files on every mirrored branch of the private repo (setup steps
+   2–3), with `cutover` = now. The publishing guards name the **new public** repo.
+5. **Create the public repo** under the old name (`gh repo create <owner>/<name>
+   --public`) with the old description, homepage and topics. This ends GitHub's redirect
+   from the old name to the renamed repo, which is the intent. Turn its Actions off.
+   Set again the secrets, variables, environments and rulesets from the Phase A list.
+6. **Filter** the private repo locally with the pinned filter-repo, `check`, then push
+   each mirrored branch and every tag to the public repo. It is empty, so this is a
+   normal push, not a force-push. Then the deploy key (setup step 4) and a manual
+   `Mirror` run, which must report every ref up to date. Turn Actions on.
+7. **Releases.** Recreate each saved release on its tag:
+   `gh release create <tag> -R <public> --title <name> --notes-file <body> <assets>`
+   (`--prerelease` where it was one). Mark the newest one latest.
+8. **Integrations.** Repoint every outside integration from the Phase A list (deploy
+   hosts, package trusted-publishing, Pages) to the new public repo. These are the
+   user's accounts — give exact steps, and do what the CLI can do only with their go.
+9. **Repoint** the local clone: `git remote set-url origin <private-url>`. Set
+   `docs/specs/spec.md` `repo:` and any issue-flow config to the private repo.
+10. **Verify.** `check` passes on a fresh clone of the public repo; the next tag publishes
+    from the public repo; the site deploys; the old issue and PR URLs return 404 when
+    you are signed out.
 
 ## Mode: import (outside contribution)
 
