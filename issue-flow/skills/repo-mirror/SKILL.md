@@ -36,9 +36,12 @@ later sync produce the same commits. Never filter with anything else, and pin
 
 - **`exclude`** — the default list above. Ask the user before you add or drop an entry;
   do not decide what is private for them. The last two entries keep the mirror machinery
-  itself out of the mirror. Always keep them.
+  itself out of the mirror. Always keep them. Once the mirror is live, a changed list
+  rewrites every commit that touches the affected paths, so every sync after it is
+  rejected until the one-time repair in Rules runs. Say so before you change it.
 - **`branches`** — the live branch, plus `dev` under the dev-and-live model. Never the
-  `issue/`, `batch/`, `epic/`, `review/` or `spec/` branches.
+  `issue/`, `batch/`, `epic/`, `review/` or `spec/` branches. Only tags that one of
+  these branches contains are mirrored; a tag on any other branch is skipped.
 - **`cutover`** — Unix time of the switch. In commits made after it, `#123` becomes
   `owner/name-private#123`, because private issue numbers restart and would otherwise
   link to an unrelated public issue. Commits before it keep their references unchanged:
@@ -79,12 +82,14 @@ chose `visibility: mirrored`.
    key files afterwards.
 5. Commit and push to every mirrored branch. Watch the `Mirror` run, then confirm the
    public repo has the code and none of the excluded paths.
-
-**How the sync behaves.** Every run publishes every mirrored branch and every tag, not
-only the ref that started it. Runs share one concurrency group, and GitHub cancels a
-queued run when a newer one queues behind it — a `cancelled` Mirror run is normal, and
-the run that replaced it carries its refs.
 6. Set `repo:` in `docs/specs/spec.md` to the **private** repo. Issues are filed there.
+
+**How the sync behaves.** Every run publishes every mirrored branch and every tag those
+branches contain, not only the ref that started it. Runs share one concurrency group,
+and GitHub cancels a queued run when a newer one queues behind it — a `cancelled` Mirror
+run is normal, and the run that replaced it carries its refs. A tag that is moved or
+re-created in the private repo diverges from the mirror's copy, and the sync is rejected
+until the repair in Rules runs.
 
 ## Mode: convert (existing public repo)
 
@@ -204,7 +209,9 @@ same with `enabled=true`.
    Copy the secrets and variables the private repo's CI needs.
 3. **Install** the setup files on every mirrored branch of the private repo (setup steps
    2–3), with `cutover` = now.
-4. **Filter** the private repo locally with the pinned filter-repo, then `check`.
+4. **Filter** a fresh `git clone --mirror` of the private repo with the pinned
+   filter-repo, then `check`. Not a working clone: a stale or unpushed local branch would
+   give a history that CI does not reproduce.
 5. **Force-push** the result to the public repo, with its Actions off: each mirrored
    branch and every tag with `--force`, then delete the public branches the mirror does
    not keep. This is the one force-push in the life of the mirror. Turn Actions back on.
@@ -237,7 +244,8 @@ same with `enabled=true`.
    --public`) with the old description, homepage and topics. This ends GitHub's redirect
    from the old name to the renamed repo, which is the intent. Turn its Actions off.
    Set again the secrets, variables, environments and rulesets from the Phase A list.
-6. **Filter** the private repo locally with the pinned filter-repo, `check`, then push
+6. **Filter** a fresh `git clone --mirror` of the private repo with the pinned
+   filter-repo, `check`, then push
    each mirrored branch and every tag to the public repo. It is empty, so this is a
    normal push, not a force-push. Turn the public repo's Actions on. Then the deploy key
    (setup step 4), the private repo's Actions on, and a manual `Mirror` run, which must
@@ -278,7 +286,8 @@ A PR opened on the public mirror:
   go after reading the report.
 - **One force-push, ever** — Phase B step 5. A later sync that is rejected means
   divergence. Find the cause; do not force. When the cause is found and fixed, and a
-  local `filter` of the private repo shows the correct ref, repair **only that ref**
-  with `--force`, with the public repo's Actions off, and with the user's go.
+  `filter` of a fresh mirror clone of the private repo shows the correct refs, repair
+  **only the refs that differ** with `--force`, with the public repo's Actions off, and
+  with the user's go. A changed `exclude` list or `cutover` makes that every ref.
 - **Tell the truth about what a rewrite cannot do:** forks, clones and archives keep the
   old history. The conversion stops further exposure. It does not recall anything.

@@ -15,7 +15,7 @@ name: Mirror
 on:
   push:
     branches: [__BRANCHES__]
-    tags: ['*']
+    tags: ['**']
   workflow_dispatch:
 
 concurrency:
@@ -63,5 +63,9 @@ jobs:
           key="$RUNNER_TEMP/mirror_key"
           printf '%s\n' "$MIRROR_DEPLOY_KEY" > "$key"
           chmod 600 "$key"
-          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          # GitHub's published host key (gh api meta --jq .ssh_keys). A fresh runner has
+          # no known_hosts, so without a pinned key the push would trust any host.
+          hosts="$RUNNER_TEMP/known_hosts"
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts"
           git -C "$RUNNER_TEMP/mirror" push git@github.com:__PUBLIC__.git 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'

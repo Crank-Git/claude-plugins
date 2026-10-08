@@ -62,6 +62,7 @@ def build(root):
     git(source, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
     git(source, "switch", "-q", "-c", "issue/7-wip")
     commit(source, {"wip.go": "w\n"}, "WIP", CUTOVER + 200)
+    git(source, "tag", "-a", "wip-tag", "-m", "a tag on an unmirrored branch")
     git(source, "switch", "-q", "main")
     config = os.path.join(root, "config.json")
     with open(config, "w") as handle:
@@ -81,6 +82,39 @@ def run_filter(config, source, out):
         raise RuntimeError(result.stderr)
 
 
+def check_blind_spots(root, config):
+    """`check` must see a path that only a merge commit adds, and a non-ASCII path."""
+    repo = os.path.join(root, "blind")
+    os.makedirs(repo)
+    git(repo, "init", "-q", "-b", "main")
+    commit(repo, {"a.go": "a\n"}, "Base", CUTOVER)
+    git(repo, "switch", "-q", "-c", "side")
+    commit(repo, {"b.go": "b\n"}, "Side", CUTOVER + 1)
+    git(repo, "switch", "-q", "main")
+    commit(repo, {"c.go": "c\n"}, "Main", CUTOVER + 2)
+    git(repo, "merge", "-q", "--no-ff", "--no-commit", "side")
+    commit(repo, {"docs/specs/merge-only.md": "s\n"}, "Merge side", CUTOVER + 3)
+    commit(repo, {"docs/specs/r\u00e9sum\u00e9.md": "s\n"}, "Accent", CUTOVER + 4)
+    git(repo, "rm", "-q", "docs/specs/r\u00e9sum\u00e9.md")
+    git(repo, "commit", "-q", "-m", "Remove them", date=CUTOVER + 5)
+    result = mirror("check", "--config", config, "--repo", repo)
+    for path in ("docs/specs/merge-only.md", "docs/specs/r\u00e9sum\u00e9.md"):
+        if f"LEAK {path}" not in result.stdout:
+            fail(f"check should report {path}: {result.stdout!r}")
+
+
+def source_prefers_origin(root, config, source):
+    """In a checkout whose local branch is behind origin, the filter uses origin's copy."""
+    checkout = os.path.join(root, "checkout")
+    subprocess.run(["git", "clone", "-q", source, checkout], check=True)
+    commit(source, {"main.go": "newest\n"}, "Newest", CUTOVER + 400)
+    git(checkout, "fetch", "-q", "origin")
+    out = os.path.join(root, "from-checkout")
+    run_filter(config, checkout, out)
+    if git(out, "log", "-1", "--format=%s", "main") != "Newest":
+        fail("the filter should use origin's copy of the branch, not a stale local branch")
+
+
 def main():
     with tempfile.TemporaryDirectory() as root:
         source, config = build(root)
@@ -95,7 +129,7 @@ def main():
         if git(first, "for-each-ref", "--format=%(refname)", "refs/heads/") != "refs/heads/main":
             fail("only the configured branch should be mirrored")
         if git(first, "tag") != "v1.0.0":
-            fail("the tag should be mirrored")
+            fail(f"only the tag on a mirrored branch should be mirrored, got {git(first, 'tag').split()}")
         if git(first, "for-each-ref", "refs/replace/"):
             fail("replace refs should be removed")
 
@@ -138,6 +172,9 @@ def main():
         stats = mirror("stats", "--config", config, "--source", source)
         if "     2  docs/specs/" not in stats.stdout:
             fail(f"stats should count 2 spec paths: {stats.stdout}")
+
+        check_blind_spots(root, config)
+        source_prefers_origin(root, config, source)
 
     for message in failures:
         print(f"FAIL {message}")

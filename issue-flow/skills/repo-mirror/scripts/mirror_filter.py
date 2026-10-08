@@ -5,8 +5,8 @@
     python3 mirror_filter.py check  --config .github/mirror/config.json --repo <dir>
     python3 mirror_filter.py stats  --config .github/mirror/config.json --source <repo>
 
-`filter` copies the configured branches and every tag from <source> into a new
-bare repo at <out>, then runs git filter-repo on it: the excluded paths leave
+`filter` copies the configured branches, and every tag that one of them contains,
+from <source> into a new bare repo at <out>, then runs git filter-repo on it: the excluded paths leave
 every commit, commits left empty are pruned, and in commits made after the
 cutover a bare `#123` becomes `<private>#123`, so a mirror commit never links to
 an unrelated public issue with the same number.
@@ -75,16 +75,24 @@ def excluded(path, rules):
 
 
 def history_paths(repo):
-    """Every path that any commit reachable from any ref adds, changes or deletes."""
-    out = run(["git", "log", "--all", "--format=", "--name-only", "--no-renames"], repo).stdout
-    return {line for line in out.splitlines() if line}
+    """Every path that any commit reachable from any ref adds, changes or deletes.
+
+    -m lists a merge commit's changes against each parent, so a path that only a merge
+    adds is seen. -z keeps paths unquoted, so a non-ASCII path still matches its rule.
+    """
+    out = run(["git", "log", "--all", "-m", "-z", "--format=", "--name-only", "--no-renames"], repo).stdout
+    return {path.strip("\n") for path in out.split("\0") if path.strip("\n")}
 
 
 def source_ref(source, branch):
-    """The source ref that holds `branch`: a local branch, else origin's copy (a CI checkout)."""
+    """The source ref that holds `branch`: origin's copy when there is one, else the branch.
+
+    In a CI checkout, origin's copy is the newest state, and the local branch can be an
+    older commit (the event's commit). A mirror clone has only the branch.
+    """
     refs = run(["git", "ls-remote", source, f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"]).stdout
     names = [line.split("\t")[1] for line in refs.splitlines()]
-    for name in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
+    for name in (f"refs/remotes/origin/{branch}", f"refs/heads/{branch}"):
         if name in names:
             return name
     sys.exit(f"error: the source has no branch '{branch}'")
@@ -103,6 +111,24 @@ def callback(config):
     )
 
 
+def drop_unmirrored_tags(config, repo):
+    """Delete each tag whose commit no mirrored branch contains.
+
+    A tag on an unmirrored branch would otherwise publish that branch's commits.
+    """
+    heads = [f"refs/heads/{b}" for b in config["branches"]]
+    tags = run(["git", "for-each-ref", "--format=%(refname)", "refs/tags/"], repo).stdout.split()
+    for tag in tags:
+        commit = run(["git", "rev-parse", "--verify", "--quiet", f"{tag}^{{commit}}"], repo, check=False).stdout.strip()
+        mirrored = commit and any(
+            run(["git", "merge-base", "--is-ancestor", commit, head], repo, check=False).returncode == 0
+            for head in heads
+        )
+        if not mirrored:
+            print(f"skip {tag}: no mirrored branch contains it", file=sys.stderr)
+            run(["git", "update-ref", "-d", tag], repo)
+
+
 def do_filter(config, source, out):
     if os.path.exists(out) and os.listdir(out):
         sys.exit(f"error: {out} is not empty")
@@ -110,6 +136,7 @@ def do_filter(config, source, out):
     refspecs = [f"+{source_ref(source, b)}:refs/heads/{b}" for b in config["branches"]]
     refspecs.append("+refs/tags/*:refs/tags/*")
     run(["git", "fetch", "--quiet", "--no-tags", source, *refspecs], out)
+    drop_unmirrored_tags(config, out)
 
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as handle:
         for rule in config["exclude"]:
