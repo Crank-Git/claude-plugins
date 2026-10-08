@@ -16,6 +16,7 @@ created: <YYYY-MM-DD>
 approved: null                # date on approval
 html_generated: null          # date spec.html was last regenerated
 branch_model: dev-and-live    # dev-and-live | trunk  (the user's choice — see Phase 1)
+visibility: public            # public | private | mirrored  (the user's choice — see Phase 1)
 features:                     # ordered, must match features/ exactly
   - id: foundation            # stable id, never renamed — dedup key for spec-to-issues
     file: features/00-foundation.md

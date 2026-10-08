@@ -24,8 +24,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyYAML
-        run: pip install --quiet pyyaml
+      - name: Install PyYAML and git-filter-repo
+        run: pip install --quiet pyyaml git-filter-repo==2.47.0
 
       - name: Test the validator's own checks
         run: python3 scripts/test-validate.py
@@ -53,6 +53,9 @@ jobs:
 
       - name: Test the Gitea CI-watch script
         run: python3 scripts/test-gitea-ci-watch.py
+
+      - name: Test the mirror filter
+        run: python3 scripts/test-mirror-filter.py
 
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py

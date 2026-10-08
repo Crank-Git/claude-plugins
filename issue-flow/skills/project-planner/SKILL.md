@@ -94,9 +94,17 @@ Cover, roughly in this order:
      target exists) deploys straight away.
    Record the answer as `branch_model` in the spec front-matter; issue-flow reads it at
    preflight instead of guessing from what branches happen to exist.
-5. **Constraints** — budget/CI limits, timeline, compliance, design/brand direction,
+5. **Visibility** — ask directly, because the spec, the issues and the PRs live wherever
+   the code lives:
+   - **public** — everything public, specs and issues included.
+   - **private** — everything private.
+   - **mirrored** — a private repo holds everything; a public mirror gets the code with
+     `docs/specs/`, `docs/adr/`, `CLAUDE.md` and `.claude/` filtered out
+     (`/repo-mirror setup`).
+   Record the answer as `visibility` in the spec front-matter.
+6. **Constraints** — budget/CI limits, timeline, compliance, design/brand direction,
    third-party integrations.
-6. **Per feature set, one round each** — for anything you cannot specify to the depth
+7. **Per feature set, one round each** — for anything you cannot specify to the depth
    Phase 2 requires: the real workflow, the states, what happens when it goes wrong.
 
 Between rounds do homework instead of asking: explore the repo, `WebSearch` comparable
@@ -207,6 +215,10 @@ workers see only **tracked, pushed** files. So before handing off, state plainly
 > The spec must be committed **and pushed** before `/spec-to-issues`, or every spec link
 > in every issue will be dead and the workers will build blind.
 
+Under `visibility: mirrored`, the spec must reach the **private** repo only. If the
+repos do not exist yet, the first command is `/repo-mirror setup`, before anything is
+pushed.
+
 Then give the next commands:
 
 ```
@@ -226,7 +238,7 @@ Before you declare the planner done, verify:
 - [ ] **Every external interface in the spec cites its documentation** — URL plus the API
       or SDK version — and anything unconfirmed sits in `Risks & open questions` rather
       than in a requirement.
-- [ ] `docs/specs/spec.md` — front-matter complete (including `branch_model` and the
+- [ ] `docs/specs/spec.md` — front-matter complete (including `branch_model`, `visibility` and the
       `features:` id/file list matching the directory), every section written, a
       `## Terms` table covering every domain noun and verb the spec uses, and the two
       mandatory diagrams: the architecture mermaid flowchart and the data-model
