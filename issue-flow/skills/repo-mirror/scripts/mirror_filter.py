@@ -34,7 +34,7 @@ The config file is JSON:
 
 An exclude entry is a path (a file, or a directory with or without a trailing
 slash) or `glob:<pattern>`, where `*` also matches `/`, as in filter-repo.
-`cutover` is a Unix time; leave it out to rewrite no messages.
+`cutover` is a Unix time. Leave it out, or set it to 0, to rewrite no messages.
 """
 
 import argparse
@@ -92,7 +92,7 @@ def source_ref(source, branch):
 
 def callback(config):
     cutover = config.get("cutover")
-    if cutover is None:
+    if not cutover:
         return None
     private = config["private"].encode()
     # filter-repo runs this as a function body with `commit` in scope.

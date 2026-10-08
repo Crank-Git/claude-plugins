@@ -34,6 +34,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # On a tag push, checkout leaves the pushed tag as a lightweight tag. The mirror
+      # must get the annotated tag, or the next sync finds a different tag and is
+      # rejected.
+      - name: Fetch the real tags
+        run: git fetch --force --tags origin
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

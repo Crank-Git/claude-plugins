@@ -124,6 +124,17 @@ def main():
         if git(third, "rev-parse", "main~1") != old_head:
             fail("a new source commit should append to the mirror, not rewrite it")
 
+        unset = os.path.join(root, "unset.json")
+        with open(config) as handle:
+            data = json.load(handle)
+        data["cutover"] = 0
+        with open(unset, "w") as handle:
+            json.dump(data, handle)
+        fourth = os.path.join(root, "fourth")
+        run_filter(unset, source, fourth)
+        if "owner/repo-private#" in git(fourth, "log", "--format=%s", "main"):
+            fail("cutover 0 means not set: no reference may be rewritten")
+
         stats = mirror("stats", "--config", config, "--source", source)
         if "     2  docs/specs/" not in stats.stdout:
             fail(f"stats should count 2 spec paths: {stats.stdout}")

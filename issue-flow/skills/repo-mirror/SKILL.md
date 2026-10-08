@@ -42,8 +42,20 @@ later sync produce the same commits. Never filter with anything else, and pin
 - **`cutover`** — Unix time of the switch. In commits made after it, `#123` becomes
   `owner/name-private#123`, because private issue numbers restart and would otherwise
   link to an unrelated public issue. Commits before it keep their references unchanged:
-  those numbers belong to the public repo. Set it once and never change it — a new value
-  rewrites history.
+  those numbers belong to the public repo. `0` (as in the template) means not set: no
+  message is rewritten — that is what Phase A rehearses with. Set it once, when the
+  private repo goes live, and never change it — a new value rewrites history.
+
+## Requirements
+
+- **Actions must run on the private repo.** GitHub bills Actions minutes on private
+  repos. If the account's payments failed or its spending limit is spent, every job is
+  refused with "The job was not started because recent account payments have failed or
+  your spending limit needs to be increased" — and the mirror never syncs. A sync takes
+  well under a minute, but ask the user to confirm the account can run private-repo
+  Actions before you set anything up. The first manual `Mirror` run proves it.
+- **A deploy key with write access** on the public repo. Its pushes start the public
+  repo's workflows, which is what lets a tag release from the public repo.
 
 ## Mode: setup (new project)
 
@@ -67,6 +79,11 @@ chose `visibility: mirrored`.
    key files afterwards.
 5. Commit and push to every mirrored branch. Watch the `Mirror` run, then confirm the
    public repo has the code and none of the excluded paths.
+
+**How the sync behaves.** Every run publishes every mirrored branch and every tag, not
+only the ref that started it. Runs share one concurrency group, and GitHub cancels a
+queued run when a newer one queues behind it — a `cancelled` Mirror run is normal, and
+the run that replaced it carries its refs.
 6. Set `repo:` in `docs/specs/spec.md` to the **private** repo. Issues are filed there.
 
 ## Mode: convert (existing public repo)
@@ -128,10 +145,13 @@ Work in the scratch directory. Change nothing on GitHub.
 8. **Workflows.** Every workflow that publishes (tags, Pages, packages, deploys) — each
    needs the repository guard. List repository secrets and variables
    (`gh secret list`, `gh variable list`): the private repo needs the ones its own CI uses.
+   Ask whether the account can run Actions on private repos (see Requirements); the plan
+   is dead without it.
 9. **Issues.** Split them: issues the owner or issue-flow opened move to the private repo
    (`gh issue transfer` — public to private is allowed, the reverse is not); issues
    outside users opened stay public. Name each outside author. Labels must exist in the
-   target first or they drop off.
+   target first or they drop off; they show on the moved issue a few seconds after the
+   transfer.
 10. **PRs.** They cannot be transferred or deleted by the owner. List PRs whose **body
     quotes spec text** (not just a `docs/specs/` link — a dead path leaks nothing) — the
     user may edit those, and GitHub keeps the edit history, which the owner can delete
@@ -162,19 +182,24 @@ Re-run step 1 and steps 3–4 first if anything was pushed to the public repo si
 Phase A. Then follow the route the user chose, in order, confirming any step the report
 left open.
 
-**Turn Actions off on the public repo around every history push.** A push of rewritten
-or new tags starts the public repo's tag-triggered workflows — releases and package
-publishes — once per tag. Before the push:
-`gh api -X PUT repos/<public>/actions/permissions -F enabled=false`. After it, and after
-the publishing workflows carry the repository guard:
-`gh api -X PUT repos/<public>/actions/permissions -F enabled=true`.
+**Keep Actions off on any repo whose tags you push before its workflows are ready.** A
+tag push starts that repo's tag-triggered workflows — releases and package publishes —
+once per tag, and a force-pushed tag starts them again. That holds for the public repo
+during the history push, and for the private repo until its publishing workflows carry
+the repository guard and its deploy key is set. Turning Actions off does not block git
+access. Off: `gh api -X PUT repos/<repo>/actions/permissions -F enabled=false`. On: the
+same with `enabled=true`.
+
+**After a visibility change, wait for git access.** For a short time after `gh repo edit
+--visibility`, pushes fail with "Repository ... is disabled". Wait until
+`git ls-remote <url>` succeeds before the next push.
 
 #### Mirror route
 
 1. **Freeze.** Ask the user to merge nothing and push nothing to the public repo until
    step 6 is done.
-2. **Private repo.** `gh repo create <private> --private`, then push the unfiltered
-   history from the mirror clone: `git push <private-url> 'refs/heads/*:refs/heads/*'
+2. **Private repo.** `gh repo create <private> --private`, turn its Actions off, then push
+   the unfiltered history from the mirror clone: `git push <private-url> 'refs/heads/*:refs/heads/*'
    'refs/tags/*:refs/tags/*'` (never `--mirror`: `refs/pull/*` is read-only on GitHub).
    Copy the secrets and variables the private repo's CI needs.
 3. **Install** the setup files on every mirrored branch of the private repo (setup steps
@@ -183,9 +208,10 @@ the publishing workflows carry the repository guard:
 5. **Force-push** the result to the public repo, with its Actions off: each mirrored
    branch and every tag with `--force`, then delete the public branches the mirror does
    not keep. This is the one force-push in the life of the mirror. Turn Actions back on.
-6. **Deploy key** (setup step 4), then run the `Mirror` workflow by hand
-   (`gh workflow run mirror.yml -R <private>`). It must report every ref up to date. If
-   it pushes anything, CI and the local run disagree — stop and investigate.
+6. **Deploy key** (setup step 4), turn the private repo's Actions on, then run the
+   `Mirror` workflow by hand (`gh workflow run mirror.yml -R <private>`). It must report
+   every ref up to date. If it pushes anything, CI and the local run disagree — stop and
+   investigate.
 7. **Issues.** `gh label clone <public> -R <private>`, then transfer the agreed issues.
 8. **Repoint.** The user's local clone: `git remote set-url origin <private-url>`.
    `docs/specs/spec.md` `repo:` and any issue-flow config → the private repo.
@@ -203,7 +229,8 @@ the publishing workflows carry the repository guard:
 3. **Rename and make private.** `gh repo rename <name>-private -R <owner>/<name>`, then
    `gh repo edit <owner>/<name>-private --visibility private
    --accept-visibility-change-consequences`. The issues, PRs, secrets, Actions history
-   and settings stay with this repo.
+   and settings stay with this repo. Turn its Actions off until step 6 — the install push
+   would otherwise start a `Mirror` run with no public repo and no key.
 4. **Install** the setup files on every mirrored branch of the private repo (setup steps
    2–3), with `cutover` = now. The publishing guards name the **new public** repo.
 5. **Create the public repo** under the old name (`gh repo create <owner>/<name>
@@ -212,8 +239,9 @@ the publishing workflows carry the repository guard:
    Set again the secrets, variables, environments and rulesets from the Phase A list.
 6. **Filter** the private repo locally with the pinned filter-repo, `check`, then push
    each mirrored branch and every tag to the public repo. It is empty, so this is a
-   normal push, not a force-push. Then the deploy key (setup step 4) and a manual
-   `Mirror` run, which must report every ref up to date. Turn Actions on.
+   normal push, not a force-push. Turn the public repo's Actions on. Then the deploy key
+   (setup step 4), the private repo's Actions on, and a manual `Mirror` run, which must
+   report every ref up to date.
 7. **Releases.** Recreate each saved release on its tag:
    `gh release create <tag> -R <public> --title <name> --notes-file <body> <assets>`
    (`--prerelease` where it was one). Mark the newest one latest.
@@ -232,18 +260,25 @@ A PR opened on the public mirror:
 
 1. `gh pr diff <n> -R <public> --patch > <scratch>/pr-<n>.patch`.
 2. In the private repo, branch from the PR's target branch and `git am -3` the patch.
-   Authorship is kept. The patch never touches an excluded path, so it applies.
-3. Open the PR in the private repo. Write the public PR fully qualified
-   (`<public>#<n>`) in its title and body — a bare `#n` is rewritten to point at the
-   private repo.
-4. After it merges and the mirror syncs, comment on the public PR with the mirror commit
-   that carries the change, thank the author, and close it.
+   `git am` keeps the contributor as the author. The patch never touches an excluded
+   path, so it applies. Add the source to each commit:
+   `git commit --amend --no-edit --trailer "Imported-from: <public>#<n>"` (for several
+   commits, `git rebase --exec` the same command). Write the public PR fully qualified —
+   a bare `#n` is rewritten to point at the private repo.
+3. Open the PR in the private repo, with `<public>#<n>` in its title and body.
+4. **Merge it with rebase** (`gh pr merge --rebase`), not squash. A squash merge makes
+   the merger the author, demotes the contributor to a `Co-authored-by` trailer, and
+   replaces the commit message — the trailer goes with it.
+5. After the mirror syncs, comment on the public PR with the mirror commit that carries
+   the change, thank the author, and close it (`gh pr close <n> -R <public> -c "..."`).
 
 ## Rules
 
 - **Phase B never runs on the same turn as Phase A**, and never without the user saying
   go after reading the report.
 - **One force-push, ever** — Phase B step 5. A later sync that is rejected means
-  divergence. Find the cause; do not force.
+  divergence. Find the cause; do not force. When the cause is found and fixed, and a
+  local `filter` of the private repo shows the correct ref, repair **only that ref**
+  with `--force`, with the public repo's Actions off, and with the user's go.
 - **Tell the truth about what a rewrite cannot do:** forks, clones and archives keep the
   old history. The conversion stops further exposure. It does not recall anything.

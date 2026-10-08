@@ -204,7 +204,8 @@ the job never force-pushes.
   the report.
 - **import** — brings an outside contributor's PR from the mirror into the private repo.
 
-GitHub only. A rewrite cannot recall what forks and clones already hold.
+GitHub only, and the account must be able to run Actions on private repos (GitHub bills
+those minutes). A rewrite cannot recall what forks and clones already hold.
 
 ## What earns an issue
 
