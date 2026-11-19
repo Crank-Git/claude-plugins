@@ -156,7 +156,7 @@ A `commit` event has the nine standard keys and these keys. `ts` is the commit d
 | `subject`, `body` | The first line of the message, and the rest without surrounding blank lines. |
 | `author` | The author login, or the git author name. |
 | `change` | `feature`, `fix`, `test`, `docs`, `refactor` or `merge`. |
-| `why` | The `Why:` trailer, else the body without its trailer lines, else `null`. |
+| `why` | The `Why:` trailer, else the body without its trailer lines, else `null`. Trailer lines are `Change:`, `Why:` and `Fixes:` lines, and a closing paragraph of `Token: value` lines (`Co-Authored-By:`, `Signed-off-by:`). |
 | `addresses` | The ids of the problems the commit addresses. `[]` when none. |
 | `files` | `[{path, status, additions, deletions, patch, truncated}]`. |
 
@@ -202,7 +202,7 @@ resolved. A merge commit addresses nothing without a `Fixes:` trailer.
 | `id` | `<issue>:<k>` when the comment's marker has `problem=<k>`. Otherwise `<issue>:auto-<i>`, where `i` counts the unkeyed problems of the issue in time order from 1. |
 | `source` | The event kind: `comment`, `review` or `ci.run`. |
 | `role`, `state` | `role` is `gate.rework` for a comment, else `null`. `state` is the review state or the CI conclusion, else `null`. |
-| `text` | The comment or review excerpt, or `<workflow> <conclusion> in <job> at <step>`. |
+| `text` | The whole text of the comment or review, without the issue-flow marker line (the 300-character `excerpt` is for log entries only), or `<workflow> <conclusion> in <job> at <step>`. |
 | `url` | The page of the source event. A `Fixes:` trailer cites this URL. |
 | `ts` | When the problem opened. |
 | `resolved_by` | The `sha` of every commit that addresses it. |
@@ -286,7 +286,7 @@ shows three parts.
    role `gate.rework`), review rounds (`review` events with the state `changes_requested`) and CI
    failures (`ci.run` events that failed). `lane_summary` counts them over every event of the lane.
 2. **What needed fixing.** One entry per item of `issues.<n>.problems`, on issue lanes. Each entry
-   shows the text, a link to the source, and the commits in `resolved_by` (sha, linked, with the
+   shows the whole text (wrapped), a link to the source, and the commits in `resolved_by` (sha, linked, with the
    subject). An open problem says so.
 3. **Log.** The commits, comments, reviews, CI runs and agent events of the lane in time order, with
    a badge for `change` (commits), `role` (comments), `state` (reviews) and the conclusion (CI runs).
@@ -315,3 +315,5 @@ legend reads the same table.
 | `msg` | An `agent.messaged` event, on the agent lane. |
 
 A commit, comment, review or CI run that matches no row draws no marker and appears only in the log.
+
+**Time axis.** The axis draws as many labels as fit in its width: five at most, fewer until no two overlap. It thins again when the window resizes or the panel opens or closes.

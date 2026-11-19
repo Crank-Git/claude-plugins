@@ -309,12 +309,29 @@ def _excerpt(text):
     return (text or "")[:EXCERPT_CHARS]
 
 
+def _full_text(text):
+    """Return a source text for a problem: whole, without the issue-flow marker line."""
+    return MARKER.sub("", text or "").strip()
+
+
+GIT_TRAILER = re.compile(r"^[A-Za-z][A-Za-z0-9-]*:[ \t]+\S")
+
+
+def body_without_trailers(body):
+    """Return a commit body without `Change:`, `Why:` and `Fixes:` lines and without a trailing trailer block."""
+    kept = "\n".join(l for l in (body or "").split("\n") if not TRAILER.match(l)).strip()
+    paragraphs = [p for p in re.split(r"\n\s*\n", kept) if p.strip()]
+    while paragraphs and all(GIT_TRAILER.match(l) for l in paragraphs[-1].split("\n") if l.strip()):
+        paragraphs.pop()
+    return "\n\n".join(paragraphs).strip()
+
+
 def _comment_event(item, issue, pr, batch):
     """One `comment` event for a timeline comment, with its role, excerpt, url and marker problem key."""
     marker = parse_marker(item["body"])
     return _event(item["ts"], "comment", issue, pr, batch, item["actor"], role=classify_comment(item["body"]),
                   excerpt=_excerpt(item["body"]), url=item["url"],
-                  problem=marker["problem"] if marker else None)
+                  problem=marker["problem"] if marker else None, _full=_full_text(item["body"]))
 
 
 def _parse_diff(text):
@@ -378,7 +395,7 @@ def _commit_event(raw, issue, pr, batch, diffs, budget):
                       "additions": adds, "deletions": dels, "patch": patch, "truncated": truncated})
     merge = len(raw.get("parents") or []) > 1
     change = trailers["change"] or ("merge" if merge else _change_from_files([f["path"] for f in files]))
-    why_body = "\n".join(l for l in body.split("\n") if not TRAILER.match(l)).strip()
+    why_body = body_without_trailers(body)
     event = _event(to_utc(when), "commit", issue, pr, batch, author, detail=subject, sha=raw.get("sha"),
                    subject=subject, body=body, author=author, url=raw.get("html_url"), change=change,
                    why=trailers["why"] or why_body or None, addresses=[], files=files)
@@ -393,7 +410,8 @@ def _review_events(raw_reviews, raw_comments, issue, pr, batch):
         ts = to_utc(raw.get("submitted_at"))
         if state and ts:
             out.append(_event(ts, "review", issue, pr, batch, _login(raw, "user"), state=state,
-                              excerpt=_excerpt(raw.get("body")), url=raw.get("html_url"), review_id=raw.get("id")))
+                              excerpt=_excerpt(raw.get("body")), url=raw.get("html_url"), review_id=raw.get("id"),
+                              _full=_full_text(raw.get("body"))))
     for raw in raw_comments:
         ts = to_utc(raw.get("created_at"))
         if not ts:
@@ -437,9 +455,9 @@ def _problem_source(event):
     """Return (source, role, state, text) when `event` opens a problem, else None."""
     kind = event["kind"]
     if kind == "comment" and event.get("role") == "gate.rework":
-        return kind, "gate.rework", None, event.get("excerpt") or "Rework requested"
+        return kind, "gate.rework", None, event.get("_full") or "Rework requested"
     if kind == "review" and event.get("state") == "changes_requested":
-        return kind, None, "changes_requested", event.get("excerpt") or "Changes requested"
+        return kind, None, "changes_requested", event.get("_full") or "Changes requested"
     if kind == "ci.run" and event.get("conclusion") in RUN_FAILED:
         where = "".join([f" in {event['failed_job']}" if event.get("failed_job") else "",
                          f" at {event['failed_step']}" if event.get("failed_step") else ""])
@@ -498,6 +516,8 @@ def link_problems(events):
         event["addresses"] = [p["id"] for p in found]
         if found and inferred and event["change"] != "merge":
             event["change"] = "fix"
+    for event in events:
+        event.pop("_full", None)
     return problems
 
 
@@ -1216,6 +1236,25 @@ PAGE_JS = r"""
     if (hi <= lo) { hi = lo + 3600000; }
     return {lo: lo, hi: hi};
   }
+  // Draw as many time labels as fit in the axis. Start with five and drop one until no two overlap.
+  function axisTicks(ticks, b) {
+    for (var steps = 4; steps >= 1; steps--) {
+      ticks.textContent = "";
+      for (var k = 0; k <= steps; k++) {
+        var tick = el("span", null, stamp(b.lo + (b.hi - b.lo) * k / steps));
+        tick.style.left = (100 * k / steps) + "%"; ticks.appendChild(tick);
+      }
+      var boxes = Array.prototype.map.call(ticks.children, function (n) { return n.getBoundingClientRect(); }), clash = false;
+      for (var j = 1; j < boxes.length; j++) { if (boxes[j].left < boxes[j - 1].right + 8) { clash = true; } }
+      if (!clash) { return; }
+    }
+  }
+  var pending = false;
+  window.addEventListener("resize", function () {
+    if (pending) { return; }
+    pending = true;
+    window.requestAnimationFrame(function () { pending = false; draw(); });
+  });
   function pos(ms, b) { return (100 * (ms - b.lo) / (b.hi - b.lo)).toFixed(3) + "%"; }
 
   function laneNode(lane, b, visible) {
@@ -1273,10 +1312,6 @@ PAGE_JS = r"""
     if (b) {
       var axis = el("div", "axis"), ticks = el("div", "ticks");
       axis.appendChild(el("div"));
-      for (var k = 0; k <= 4; k++) {
-        var tick = el("span", null, stamp(b.lo + (b.hi - b.lo) * k / 4));
-        tick.style.left = (k * 25) + "%"; ticks.appendChild(tick);
-      }
       axis.appendChild(ticks);
       var board = el("div", "board"); board.appendChild(axis);
       D.groups.forEach(function (group) {
@@ -1292,6 +1327,7 @@ PAGE_JS = r"""
         }
       });
       chart.appendChild(board);
+      axisTicks(ticks, b);
     }
     var empty = $("empty");
     empty.hidden = shown > 0;
