@@ -526,14 +526,45 @@ def _convergence_strip(rows):
     return '<section class="convergence" aria-label="Convergence"><h2>Convergence</h2><ul>' + "".join(cells) + "</ul></section>"
 
 
+# One table drives the bar colors, the marker colors and the legend. Each value is
+# (light, dark). Every color in a theme is distinct, and a test enforces it.
+STATE_COLORS = {
+    "ready": ("#57606a", "#8b949e"),
+    "in-progress": ("#0969da", "#388bfd"),
+    "in-review": ("#8250df", "#a371f7"),
+    "awaiting-review": ("#bf3989", "#db61a2"),
+    "needs-feedback": ("#bf8700", "#d29922"),
+    "blocked": ("#cf222e", "#f85149"),
+    "batched": ("#b6bec8", "#4a525c"),
+    "deploying": ("#1b7c83", "#39c5cf"),
+    "deploy-failed": ("#8a1c2b", "#ff9492"),
+    "merged": ("#1a7f37", "#3fb950"),
+    "closed": ("#24292f", "#c9d1d9"),
+}
+MARKER_COLORS = {
+    "pr": ("#8250df", "#a371f7"),
+    "merge": ("#1a7f37", "#3fb950"),
+    "batch": ("#0550ae", "#79c0ff"),
+    "cp": ("#bf8700", "#d29922"),
+    "park": ("#cf222e", "#f85149"),
+    "dot": ("#656d76", "#6e7681"),
+}
+MARKER_LABELS = {"pr": "PR opened", "merge": "PR merged", "batch": "Batch merged", "cp": "Checkpoint",
+                 "park": "Parked (needs feedback or blocked)", "dot": "Other event"}
+
+
+def _theme_vars(theme):
+    pairs = [f"--st-{k}:{v[theme]};" for k, v in STATE_COLORS.items()]
+    pairs += [f"--mk-{k}:{v[theme]};" for k, v in MARKER_COLORS.items()]
+    return " ".join(pairs)
+
+
 PAGE_CSS = """
 :root { --bg:#fff; --fg:#1f2328; --muted:#656d76; --line:#d0d7de; --panel:#f6f8fa; --accent:#0969da;
-  --st-ready:#8c959f; --st-in-progress:#0969da; --st-in-review:#8250df; --st-merged:#1a7f37; --st-closed:#1a7f37;
-  --st-needs-feedback:#bf8700; --st-blocked:#cf222e; --st-none:#d0d7de; }
+  --st-none:#d0d7de; """ + _theme_vars(0) + """ }
 @media (prefers-color-scheme: dark) {
   :root { --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --line:#30363d; --panel:#161b22; --accent:#58a6ff;
-    --st-ready:#6e7681; --st-in-progress:#388bfd; --st-in-review:#a371f7; --st-merged:#3fb950; --st-closed:#3fb950;
-    --st-needs-feedback:#d29922; --st-blocked:#f85149; --st-none:#30363d; } }
+    --st-none:#30363d; """ + _theme_vars(1) + """ } }
 * { box-sizing:border-box; }
 body { margin:0; padding:1rem; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,sans-serif; }
 h1 { font-size:1.25rem; margin:0 0 .25rem; } h2 { font-size:.95rem; margin:0 0 .25rem; }
@@ -561,10 +592,12 @@ h1 { font-size:1.25rem; margin:0 0 .25rem; } h2 { font-size:.95rem; margin:0 0 .
 .seg { position:absolute; top:.45rem; height:.6rem; border-radius:3px; background:var(--st-none); opacity:.9; }
 .mk { position:absolute; top:.2rem; width:.7rem; height:.7rem; transform:translateX(-50%) rotate(45deg); background:var(--fg);
   border:2px solid var(--bg); cursor:default; }
-.mk-pr { background:var(--st-in-review); } .mk-merge { background:var(--st-merged); }
-.mk-batch { background:var(--st-merged); width:.9rem; height:.9rem; top:.1rem; }
-.mk-cp { background:var(--st-needs-feedback); border-radius:50%; } .mk-park { background:var(--st-blocked); border-radius:50%; }
-.mk-dot { background:var(--muted); border-radius:50%; }
+.mk-pr { background:var(--mk-pr); } .mk-merge { background:var(--mk-merge); }
+.mk-batch { background:var(--mk-batch); width:.9rem; height:.9rem; top:.1rem; }
+.mk-cp { background:var(--mk-cp); border-radius:50%; } .mk-park { background:var(--mk-park); border-radius:50%; }
+.mk-dot { background:var(--mk-dot); border-radius:50%; }
+.legend .mk { position:static; display:inline-block; vertical-align:middle; margin:0 .35rem 0 0; transform:rotate(45deg) scale(.8); }
+.legend .mk-batch { width:.8rem; height:.8rem; }
 #tip { position:fixed; z-index:10; max-width:24rem; background:var(--panel); border:1px solid var(--line); border-radius:6px;
   padding:.4rem .6rem; white-space:pre-line; pointer-events:none; box-shadow:0 2px 8px rgba(0,0,0,.25); }
 #empty { color:var(--muted); padding:1rem; border:1px dashed var(--line); border-radius:6px; text-align:center; }
@@ -577,7 +610,6 @@ PAGE_JS = r"""
   var D = JSON.parse(document.getElementById("tl-data").textContent);
   var MARK = {"pr.opened": "pr", "pr.merged": "merge", "batch.merged": "batch", "checkpoint": "cp"};
   var PARK = {"needs-feedback": 1, "blocked": 1};
-  var STATES = ["ready", "in-progress", "in-review", "needs-feedback", "blocked", "merged", "closed"];
   var times = D.events.map(function (e) { return Date.parse(e.ts); });
   var win = {lo: null, hi: null};
   var $ = function (id) { return document.getElementById(id); };
@@ -728,8 +760,12 @@ PAGE_JS = r"""
   });
 
   var legend = $("legend");
-  STATES.forEach(function (s) {
-    var item = el("span", null, s), swatch = el("i"); swatch.style.background = "var(--st-" + s + ")";
+  D.states.forEach(function (s) {
+    var item = el("span", null, s.label), swatch = el("i"); swatch.style.background = "var(--st-" + cls(s.key) + ", var(--st-none))";
+    item.insertBefore(swatch, item.firstChild); legend.appendChild(item);
+  });
+  D.markers.forEach(function (m) {
+    var item = el("span", null, m.label), swatch = el("span", "mk mk-" + m.key);
     item.insertBefore(swatch, item.firstChild); legend.appendChild(item);
   });
   draw();
@@ -751,7 +787,14 @@ def render_html(doc, refresh=None, now=None):
     rng = doc.get("range") or {}
     span = f"{rng.get('since') or 'start'} to {rng.get('until') or 'now'}"
     stamped = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    data = {"events": events, "issues": doc.get("issues") or {}, "batches": doc.get("batches") or {},
+    seen = [k for k in STATE_COLORS]
+    for event in events:  # a status the table does not know still gets a legend entry (grey bar)
+        for value in (event.get("to"),) if event.get("kind") == "status" else ():
+            if value and value not in seen:
+                seen.append(value)
+    states = [{"key": k, "label": k} for k in seen]
+    markers = [{"key": k, "label": MARKER_LABELS[k]} for k in MARKER_COLORS]
+    data = {"states": states, "markers": markers, "events": events, "issues": doc.get("issues") or {}, "batches": doc.get("batches") or {},
             "range": rng, "groups": groups, "kinds": kinds}
     meta = f'<meta http-equiv="refresh" content="{int(refresh)}">\n' if refresh else ""
     empty = '<p id="empty">No events in this range.</p>' if not events else '<p id="empty" hidden>No events in this range.</p>'

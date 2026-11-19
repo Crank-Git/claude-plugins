@@ -115,6 +115,11 @@ Another producer adds a lane type by adding a row and using that prefix.
 Events with no batch go in a final group named "No batch". A batch with no `branch` shows
 only its number. The page ignores event keys it does not know.
 
+**Colors and legend.** `STATE_COLORS` (one row per status) and `MARKER_COLORS` in
+`timeline.py` set every bar and marker color for both themes. The legend reads the same
+tables, so a state cannot draw without a legend entry. A status that is not in the table
+draws grey and gets its own legend entry.
+
 **Page behavior.** The page embeds the document and draws it in the browser. It makes no
 network request: the tracker links on issue lanes are the only URLs. The timeframe filter
 (24h, 7d, 30d, all, or a UTC date range) re-draws without a new render. A range with no

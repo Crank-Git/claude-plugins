@@ -355,6 +355,32 @@ check('class="convergence"' not in empty_page, "no convergence data, no strip")
 check('http-equiv="refresh"' not in html_gh, "no refresh by default")
 check('<meta http-equiv="refresh" content="5">' in timeline.render_html(gh_doc, refresh=5), "--refresh 5 writes the meta tag")
 
+# Legend: it comes from the same table as the bar colors, so every drawable state is in it.
+STATES_WANTED = ["ready", "in-progress", "in-review", "awaiting-review", "needs-feedback", "blocked", "batched",
+                 "deploying", "deploy-failed", "merged", "closed"]
+lp = payload(html_gh)
+check([s["key"] for s in lp["states"]] == STATES_WANTED or set(STATES_WANTED) <= {s["key"] for s in lp["states"]},
+      f"legend states: {[s['key'] for s in lp['states']]}")
+check(set(lp["states"][0]) >= {"key", "label"} and {s["key"] for s in lp["states"]} == set(timeline.STATE_COLORS),
+      "the page's state list is the STATE_COLORS table")
+for key in timeline.STATE_COLORS:
+    check(f"--st-{key}:" in html_gh, f"CSS defines the color of state {key}")
+for theme in (0, 1):
+    colors = [pair[theme] for pair in timeline.STATE_COLORS.values()]
+    check(len(set(colors)) == len(colors), f"state colors are distinct (theme {theme}): {colors}")
+    marks = [pair[theme] for pair in timeline.MARKER_COLORS.values()]
+    check(len(set(marks)) == len(marks), f"marker colors are distinct (theme {theme}): {marks}")
+check(timeline.STATE_COLORS["merged"] != timeline.STATE_COLORS["closed"], "merged and closed differ")
+check({m["key"] for m in lp["markers"]} == set(timeline.MARKER_COLORS) and all(m["label"] for m in lp["markers"]),
+      "the page's marker list is the MARKER_COLORS table")
+for key in timeline.MARKER_COLORS:
+    check(f"--mk-{key}:" in html_gh, f"CSS defines the color of marker {key}")
+# A status the table does not know still gets a legend entry through the data, not a silent grey bar.
+odd = copy.deepcopy(gh_doc)
+odd["events"] = odd["events"] + [{"ts": "2026-05-02T09:00:00Z", "kind": "status", "issue": 51, "pr": None, "batch": 50,
+                                  "actor": None, "from": None, "to": "mystery", "detail": None}]
+check("mystery" in [s["key"] for s in payload(timeline.render_html(odd))["states"]], "an unknown status is added to the legend")
+
 # CLI: render from a file, from stdin, and behind collect.
 with tempfile.TemporaryDirectory() as tmp:
     src = os.path.join(tmp, "events.json")
