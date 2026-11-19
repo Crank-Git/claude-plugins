@@ -275,3 +275,43 @@ draws grey and gets its own legend entry.
 network request: the tracker links on issue lanes are the only URLs. The timeframe filter
 (24h, 7d, 30d, all, or a UTC date range) re-draws without a new render. A range with no
 events shows "No events in this range." `--refresh <seconds>` adds a meta refresh.
+
+## Drill-down (the renderer)
+
+A click on a lane opens a panel beside the chart. On a narrow window the panel sits below the
+chart. A second click on another lane replaces it. `Escape` or **Close** shuts it. The panel
+shows three parts.
+
+1. **Summary.** Commits, files, lines added and removed, rework rounds (`comment` events with the
+   role `gate.rework`), review rounds (`review` events with the state `changes_requested`) and CI
+   failures (`ci.run` events that failed). `lane_summary` counts them over every event of the lane.
+2. **What needed fixing.** One entry per item of `issues.<n>.problems`, on issue lanes. Each entry
+   shows the text, a link to the source, and the commits in `resolved_by` (sha, linked, with the
+   subject). An open problem says so.
+3. **Log.** The commits, comments, reviews, CI runs and agent events of the lane in time order, with
+   a badge for `change` (commits), `role` (comments), `state` (reviews) and the conclusion (CI runs).
+   The log follows the timeframe filter. The kind filter (`LOG_GROUPS`) hides one kind at a time.
+
+**Diffs.** Each file of a commit is a `<details>` element. The page draws the diff from the embedded
+`patch` only when the element opens. Added lines, removed lines and hunk headers have their own
+colors. A file with `truncated: true` carries a `truncated` badge and a closing note. A file with a
+`null` patch says that no diff is available. The panel sets all text with `textContent`, never as
+markup, and the data tag escapes `<`, `>` and `&`.
+
+**Batch lane.** Cross-check and plan-amendment comments (`NOTE_ROLES`) of the batch show in a
+separate list on the batch lane, whichever issue holds the comment. Comments, commits, reviews and CI
+runs of the tracking issue itself, and the batch merge, sit on the batch lane.
+
+**Markers.** `marker_for` picks one marker per event. The marker table is `MARKER_COLORS`, and the
+legend reads the same table.
+
+| Marker | Event |
+|---|---|
+| `rework` | A `comment` with the role `gate.rework`. |
+| `fix` | A `commit` with `change: fix`. |
+| `ci` | A `ci.run` that failed. |
+| `review` | A `review` with the state `changes_requested`. |
+| `note` | A `comment` with the role `cross-check` or `plan-amendment`. |
+| `msg` | An `agent.messaged` event, on the agent lane. |
+
+A commit, comment, review or CI run that matches no row draws no marker and appears only in the log.
