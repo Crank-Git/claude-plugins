@@ -946,6 +946,41 @@ check(found <= allowed, f"the page holds only tracker URLs: {found - allowed}")
 check("@media (max-width" in timeline.PAGE_CSS and "#panel" in timeline.PAGE_CSS, "panel has a narrow layout")
 check(timeline.PAGE_CSS.count("--mk-note:") == 2 and timeline.PAGE_CSS.count("--mk-msg:") == 2, "new markers set in both themes")
 
+# ---------------------------------------------------------------- rework r1 (#81)
+# Fix 3: a trailer block is never a `why`.
+def why_of(message):
+    doc = timeline.normalize({"forge": {"type": "github", "owner": "o", "repo": "r"}, "issues": [],
+        "pulls": [{"pr": pr_raw(7, "T", "issue/9-x", "dev", "2026-06-01T08:00:00Z"), "timeline": [],
+                   "commits": [gh_commit("bb11", message, [{"filename": "src/a.py"}])]}]})
+    return kinds_of(doc, "commit")[0]["why"]
+
+
+check(why_of("subject\n\nCo-Authored-By: Claude <noreply@anthropic.com>") is None, "a lone Co-Authored-By trailer is not a why")
+check(why_of("subject\n\nSigned-off-by: A <a@x>\nCo-Authored-By: B <b@x>") is None, "trailer lines are not a why")
+check(why_of("subject\n\nChange: fix\nCo-Authored-By: B <b@x>") is None, "Change plus Co-Authored-By leave nothing")
+check(why_of("subject\n\nBecause the flag was unclear.\n\nCo-Authored-By: B <b@x>") == "Because the flag was unclear.", "the body stays, the trailer block goes")
+check(why_of("subject\n\nBecause X.\n\nWhy: Stated reason.\nCo-Authored-By: B <b@x>") == "Stated reason.", "a Why: trailer still wins")
+check(why_of("subject\n\nNote: this line is prose.\nMore prose.") == "Note: this line is prose.\nMore prose.", "a mixed paragraph is not a trailer block")
+
+# Fix 2: a problem carries the full source text; the log entry keeps the excerpt.
+long_text = ("PM gate: rework requested. " + "word " * 120).strip()
+rw = timeline.normalize({"forge": {"type": "github", "owner": "o", "repo": "r"},
+    "issues": [{"issue": issue_raw(51, "Flag", ["status:in-review"], "2026-06-01T08:00:00Z"), "timeline": [
+                   {"event": "commented", "id": 9, "html_url": "https://x/issues/51#issuecomment-9", "created_at": "2026-06-01T10:20:00Z",
+                    "actor": {"login": "pm"}, "body": "<!-- issue-flow:event role=gate.rework issue=51 -->\n" + long_text}]}],
+    "pulls": [{"pr": pr_raw(60, "Add flag", "issue/51-flag", "dev", "2026-06-01T08:30:00Z"), "timeline": [], "commits": [],
+               "reviews": [{"id": 7, "state": "CHANGES_REQUESTED", "body": long_text, "user": {"login": "rev"},
+                            "submitted_at": "2026-06-01T09:30:00Z", "html_url": "https://x/pull/60#pullrequestreview-7"}]}]})
+by_source = {p["source"]: p for p in rw["issues"]["51"]["problems"]}
+check(by_source["comment"]["text"] == long_text, f"a rework problem carries the full comment text: {by_source['comment']['text'][:40]!r}")
+check(by_source["review"]["text"] == long_text, "a review problem carries the full review text")
+check(all(len(e["excerpt"]) == 300 for e in rw["events"] if e["kind"] in ("comment", "review") and e.get("excerpt")),
+      "log entries keep the 300-character excerpt")
+check(not any(k.startswith("_") for e in rw["events"] for k in e), "no private key leaks into events")
+
+# Fix 1: the time axis thins its labels to the width it has.
+check("function axisTicks" in timeline.PAGE_JS and "resize" in timeline.PAGE_JS, "the axis re-thins on resize")
+
 if failures:
     for failure in failures:
         print(f"FAIL {failure}")
