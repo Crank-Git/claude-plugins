@@ -902,7 +902,22 @@ LANE_KINDS = {
     "agent": {"label": "Agent", "style": "marks"},
 }
 # Event kinds from `collect` that belong on an issue lane. `batch.*` belongs on the batch lane.
-ISSUE_PREFIXES = {"status", "issue", "pr", "checkpoint"}
+ISSUE_PREFIXES = {"status", "issue", "pr", "checkpoint", "comment", "commit", "review", "ci"}
+# The detail kinds fill the drill-down log. On a tracking issue they belong to the batch lane,
+# which is where the cross-check findings, the plan amendments and the batch CI runs show.
+DETAIL_PREFIXES = {"comment", "commit", "review", "ci"}
+# The kind filter in the panel. A key matches an event kind exactly, or by prefix when it ends in ".".
+LOG_GROUPS = (
+    ("commits", "Commits", ("commit",)),
+    ("comments", "Comments", ("comment",)),
+    ("reviews", "Reviews", ("review", "review.comment")),
+    ("ci", "CI", ("ci.run",)),
+    ("agents", "Agents", ("agent.", "worktree.")),
+    ("merges", "Merges", ("batch.merged", "pr.merged")),
+)
+PARK_STATES = ("needs-feedback", "blocked")
+NOTE_ROLES = ("cross-check", "plan-amendment")
+EVENT_MARKERS = {"pr.opened": "pr", "pr.merged": "merge", "batch.merged": "batch", "checkpoint": "cp", "agent.messaged": "msg"}
 
 
 def lane_kind_of(event_kind):
@@ -910,6 +925,57 @@ def lane_kind_of(event_kind):
     if prefix in ISSUE_PREFIXES:
         return "issue"
     return prefix or "other"
+
+
+def log_group_of(event):
+    kind = event.get("kind") or ""
+    for key, _label, matches in LOG_GROUPS:
+        if any(kind == m or (m.endswith(".") and kind.startswith(m)) for m in matches):
+            return key
+    return None
+
+
+def marker_for(event):
+    """Return the marker key an event draws, "dot" for a plain event, or None for a log-only event."""
+    kind = event.get("kind") or ""
+    if kind in EVENT_MARKERS:
+        return EVENT_MARKERS[kind]
+    if kind == "status" and event.get("to") in PARK_STATES:
+        return "park"
+    if kind == "comment" and event.get("role") == "gate.rework":
+        return "rework"
+    if kind == "comment" and event.get("role") in NOTE_ROLES:
+        return "note"
+    if kind == "commit" and event.get("change") == "fix":
+        return "fix"
+    if kind == "ci.run" and event.get("conclusion") in RUN_FAILED:
+        return "ci"
+    if kind == "review" and event.get("state") == "changes_requested":
+        return "review"
+    return None if kind.split(".")[0] in DETAIL_PREFIXES else "dot"
+
+
+def lane_summary(events):
+    """Count what a lane's events show: commits, files, lines, rework and review rounds, CI failures."""
+    paths = set()
+    summary = {"commits": 0, "files": 0, "additions": 0, "deletions": 0,
+               "rework_rounds": 0, "review_rounds": 0, "ci_failures": 0}
+    for event in events:
+        kind = event.get("kind")
+        if kind == "commit":
+            summary["commits"] += 1
+            for entry in event.get("files") or []:
+                paths.add(entry.get("path"))
+                summary["additions"] += entry.get("additions") or 0
+                summary["deletions"] += entry.get("deletions") or 0
+        elif kind == "comment" and event.get("role") == "gate.rework":
+            summary["rework_rounds"] += 1
+        elif kind == "review" and event.get("state") == "changes_requested":
+            summary["review_rounds"] += 1
+        elif kind == "ci.run" and event.get("conclusion") in RUN_FAILED:
+            summary["ci_failures"] += 1
+    summary["files"] = len(paths)
+    return summary
 
 
 def build_model(doc):
@@ -926,6 +992,9 @@ def build_model(doc):
     kinds = {}
     for index, event in enumerate(doc.get("events") or []):
         kind = lane_kind_of(event.get("kind"))
+        if kind == "issue" and (event.get("kind") or "").split(".")[0] in DETAIL_PREFIXES and event.get("issue") is not None \
+                and str(event["issue"]) in batches:
+            kind = "batch"
         if kind not in kinds:
             kinds[kind] = LANE_KINDS.get(kind) or {"label": kind.capitalize(), "style": "marks"}
         issue = None if event.get("issue") is None else str(event["issue"])
@@ -998,10 +1067,18 @@ MARKER_COLORS = {
     "batch": ("#0550ae", "#79c0ff"),
     "cp": ("#bf8700", "#d29922"),
     "park": ("#cf222e", "#f85149"),
+    "rework": ("#e16f24", "#f0883e"),
+    "fix": ("#0e8a7d", "#2dd4bf"),
+    "ci": ("#a40e26", "#ff7b72"),
+    "review": ("#bf3989", "#db61a2"),
+    "note": ("#0969da", "#58a6ff"),
+    "msg": ("#1b7c83", "#39c5cf"),
     "dot": ("#656d76", "#6e7681"),
 }
 MARKER_LABELS = {"pr": "PR opened", "merge": "PR merged", "batch": "Batch merged", "cp": "Checkpoint",
-                 "park": "Parked (needs feedback or blocked)", "dot": "Other event"}
+                 "park": "Parked (needs feedback or blocked)", "rework": "Rework requested", "fix": "Fix commit",
+                 "ci": "CI run failed", "review": "Changes requested in review", "note": "Cross-check or plan amendment",
+                 "msg": "Agent messaged", "dot": "Other event"}
 
 
 def _theme_vars(theme):
@@ -1047,8 +1124,47 @@ h1 { font-size:1.25rem; margin:0 0 .25rem; } h2 { font-size:.95rem; margin:0 0 .
 .mk-batch { background:var(--mk-batch); width:.9rem; height:.9rem; top:.1rem; }
 .mk-cp { background:var(--mk-cp); border-radius:50%; } .mk-park { background:var(--mk-park); border-radius:50%; }
 .mk-dot { background:var(--mk-dot); border-radius:50%; }
+.mk-rework { background:var(--mk-rework); border:0; transform:translateX(-50%); clip-path:polygon(50% 0,100% 100%,0 100%); }
+.mk-fix { background:var(--mk-fix); transform:translateX(-50%); border-radius:2px; }
+.mk-ci { background:var(--mk-ci); border:0; transform:translateX(-50%); clip-path:polygon(0 0,100% 0,50% 100%); }
+.mk-review { background:var(--mk-review); border:0; transform:translateX(-50%); clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%); }
+.mk-note { background:var(--mk-note); transform:translateX(-50%); width:.6rem; height:.6rem; border-radius:1px; }
+.mk-msg { background:var(--mk-msg); transform:translateX(-50%); width:.5rem; height:.5rem; border-radius:50%; }
 .legend .mk { position:static; display:inline-block; vertical-align:middle; margin:0 .35rem 0 0; transform:rotate(45deg) scale(.8); }
+.legend .mk-rework, .legend .mk-fix, .legend .mk-ci, .legend .mk-review, .legend .mk-note, .legend .mk-msg { transform:scale(.8); }
 .legend .mk-batch { width:.8rem; height:.8rem; }
+.lane { cursor:pointer; }
+.lane:hover, .lane.sel { background:var(--panel); }
+.lane:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+body.has-panel #layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(22rem,34rem); gap:1rem; align-items:start; }
+#panel { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:.75rem; position:sticky; top:.5rem;
+  max-height:calc(100vh - 1rem); overflow:auto; min-width:0; }
+#panel h3 { font-size:.85rem; margin:.75rem 0 .25rem; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+.phead { display:flex; justify-content:space-between; gap:.5rem; align-items:start; }
+.phead button, .filters button { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.1rem .5rem; cursor:pointer; }
+.filters { display:flex; flex-wrap:wrap; gap:.25rem; margin:.5rem 0; }
+.filters button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+#psummary { display:grid; grid-template-columns:repeat(auto-fill,minmax(7rem,1fr)); gap:.35rem; margin:.5rem 0 0; }
+#psummary div { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.25rem .5rem; }
+#psummary dt { color:var(--muted); font-size:.75rem; } #psummary dd { margin:0; font-weight:600; }
+#problems, #notes, #log { list-style:none; margin:0; padding:0; }
+#problems > li, #notes > li, #log > li { border-left:3px solid var(--line); padding:.25rem .5rem; margin:.35rem 0; overflow-wrap:anywhere; }
+#problems > li { border-left-color:var(--mk-rework); }
+#log > li.k-commits { border-left-color:var(--mk-fix); } #log > li.k-ci { border-left-color:var(--mk-ci); }
+#log > li.k-reviews { border-left-color:var(--mk-review); } #log > li.k-agents { border-left-color:var(--mk-msg); }
+.when { color:var(--muted); font-size:.75rem; }
+.badge { display:inline-block; font-size:.7rem; line-height:1.3; padding:0 .4rem; border:1px solid var(--line); border-radius:999px; margin-right:.25rem; background:var(--panel); }
+.b-fix, .b-gate-rework, .b-changes-requested, .b-failure, .b-timed-out, .b-truncated { border-color:var(--mk-rework); color:var(--mk-rework); }
+.b-approved, .b-success, .b-gate-pass, .b-resolved { border-color:var(--mk-merge); color:var(--mk-merge); }
+.pre { white-space:pre-wrap; }
+.why { color:var(--muted); font-style:italic; }
+details.file { margin:.25rem 0; } details.file > summary { cursor:pointer; font-family:ui-monospace,monospace; font-size:.8rem; }
+.add { color:var(--mk-merge); } .del { color:var(--mk-park); }
+.diff { font:12px/1.4 ui-monospace,monospace; margin:.25rem 0 0; overflow-x:auto; border:1px solid var(--line); border-radius:6px; }
+.dl { display:block; white-space:pre; padding:0 .5rem; }
+.dl-add { background:rgba(46,160,67,.22); } .dl-del { background:rgba(248,81,73,.22); }
+.dl-hunk { background:var(--panel); color:var(--muted); } .dl-note { color:var(--muted); font-style:italic; }
+@media (max-width:900px) { body.has-panel #layout { display:block; } #panel { position:static; max-height:none; margin-top:.75rem; } }
 #tip { position:fixed; z-index:10; max-width:24rem; background:var(--panel); border:1px solid var(--line); border-radius:6px;
   padding:.4rem .6rem; white-space:pre-line; pointer-events:none; box-shadow:0 2px 8px rgba(0,0,0,.25); }
 #empty { color:var(--muted); padding:1rem; border:1px dashed var(--line); border-radius:6px; text-align:center; }
@@ -1059,8 +1175,9 @@ PAGE_JS = r"""
 (function () {
   "use strict";
   var D = JSON.parse(document.getElementById("tl-data").textContent);
-  var MARK = {"pr.opened": "pr", "pr.merged": "merge", "batch.merged": "batch", "checkpoint": "cp"};
-  var PARK = {"needs-feedback": 1, "blocked": 1};
+  var sel = null;
+  var on = {};
+  D.logGroups.forEach(function (g) { on[g.key] = true; });
   var times = D.events.map(function (e) { return Date.parse(e.ts); });
   var win = {lo: null, hi: null};
   var $ = function (id) { return document.getElementById(id); };
@@ -1103,7 +1220,13 @@ PAGE_JS = r"""
 
   function laneNode(lane, b, visible) {
     var kind = D.kinds[lane.kind];
-    var row = el("div", "lane lane-" + cls(lane.kind));
+    var row = el("div", "lane lane-" + cls(lane.kind) + (sel && sel.id === lane.id ? " sel" : ""));
+    row.tabIndex = 0; row.setAttribute("role", "button");
+    row.setAttribute("aria-label", "Open details for " + lane.label);
+    row.addEventListener("click", function (ev) { if (!(ev.target.closest && ev.target.closest("a"))) { openLane(lane); } });
+    row.addEventListener("keydown", function (ev) {
+      if ((ev.key === "Enter" || ev.key === " ") && ev.target === row) { ev.preventDefault(); openLane(lane); }
+    });
     var name = el("div", "name");
     if (lane.url && /^https?:\/\//.test(lane.url)) {
       var link = el("a", null, lane.label);
@@ -1113,7 +1236,7 @@ PAGE_JS = r"""
     if (lane.title) { name.appendChild(el("small", null, " " + lane.title)); }
     row.appendChild(name);
     var track = el("div", "track");
-    var evs = lane.events.map(function (i) { return {e: D.events[i], t: times[i]}; });
+    var evs = lane.events.map(function (i) { return {e: D.events[i], t: times[i], i: i}; });
     if (kind.style === "bar") {
       var current = null;
       evs.forEach(function (x) { if (x.t < b.lo) { var s = stateAfter(x.e); if (s !== undefined) { current = s; } } });
@@ -1132,12 +1255,8 @@ PAGE_JS = r"""
       });
     }
     visible.forEach(function (x) {
-      var mark = null;
-      if (kind.style === "bar") {
-        mark = MARK[x.e.kind] || null;
-        if (x.e.kind === "status" && PARK[x.e.to]) { mark = "park"; }
-      } else { mark = MARK[x.e.kind] || "dot"; }
-      if (!mark) { return; }
+      var mark = D.marks[x.i];
+      if (!mark || (kind.style === "bar" && mark === "dot")) { return; }
       var node = el("div", "mk mk-" + mark);
       node.style.left = pos(x.t, b);
       node.setAttribute("data-tip", describe(x.e, lane));
@@ -1163,7 +1282,7 @@ PAGE_JS = r"""
       D.groups.forEach(function (group) {
         var rows = [];
         group.lanes.forEach(function (lane) {
-          var visible = lane.events.map(function (i) { return {e: D.events[i], t: times[i]}; })
+          var visible = lane.events.map(function (i) { return {e: D.events[i], t: times[i], i: i}; })
             .filter(function (x) { return x.t >= b.lo && x.t <= b.hi; });
           if (visible.length) { shown += visible.length; rows.push(laneNode(lane, b, visible)); }
         });
@@ -1178,6 +1297,7 @@ PAGE_JS = r"""
     empty.hidden = shown > 0;
     empty.textContent = "No events in this range." + (b && !shown ? " Range: " + stamp(b.lo) + " to " + stamp(b.hi) + " UTC." : "");
     chart.hidden = shown === 0;
+    renderPanel();
     if (b) { $("from").value = new Date(b.lo).toISOString().slice(0, 10); $("to").value = new Date(b.hi).toISOString().slice(0, 10); }
   }
 
@@ -1209,6 +1329,150 @@ PAGE_JS = r"""
     tip.style.left = Math.min(ev.clientX + 12, window.innerWidth - tip.offsetWidth - 8) + "px";
     tip.style.top = (ev.clientY + 14) + "px";
   });
+
+  // ---- the drill-down panel. Every string from the data goes in as text, never as markup.
+  var COMMITS = {};
+  D.events.forEach(function (e) { if (e.kind === "commit" && e.sha) { COMMITS[e.sha] = e; } });
+  var LABELS = [["commits", "Commits"], ["files", "Files"], ["additions", "Lines added"], ["deletions", "Lines removed"],
+    ["rework_rounds", "Rework rounds"], ["review_rounds", "Review rounds"], ["ci_failures", "CI failures"]];
+  function safeUrl(url) { return typeof url === "string" && /^https?:\/\//.test(url); }
+  function link(url, text) {
+    if (!safeUrl(url)) { return el("span", null, text); }
+    var a = el("a", null, text); a.href = url; a.rel = "noopener"; return a;
+  }
+  function badge(text) { return el("span", "badge b-" + cls(text), text); }
+  function add(parent) {
+    for (var k = 1; k < arguments.length; k++) {
+      var part = arguments[k];
+      if (part !== null && part !== undefined) { parent.appendChild(typeof part === "string" ? document.createTextNode(part) : part); }
+    }
+    return parent;
+  }
+  function openLane(lane) {
+    sel = lane;
+    document.body.classList.add("has-panel");
+    draw();
+  }
+  function closePanel() {
+    sel = null;
+    document.body.classList.remove("has-panel");
+    draw();
+  }
+  function fillDiff(box, file) {
+    box.textContent = "";
+    if (file.patch === null || file.patch === undefined) {
+      box.appendChild(el("span", "dl dl-note", "No diff available (binary file, or diffs were not collected)."));
+      return;
+    }
+    var pre = el("pre", "diff");
+    file.patch.split("\n").forEach(function (line) {
+      var c = line.charAt(0) === "+" ? "dl-add" : line.charAt(0) === "-" ? "dl-del" : line.charAt(0) === "@" ? "dl-hunk" : "";
+      pre.appendChild(el("span", "dl " + c, line === "" ? " " : line));
+    });
+    if (file.truncated) { pre.appendChild(el("span", "dl dl-note", "… diff truncated: the collector kept only the first part of this patch.")); }
+    box.appendChild(pre);
+  }
+  function fileNode(file) {
+    var d = el("details", "file");
+    var head = el("summary");
+    add(head, file.path + " ", el("span", "add", "+" + (file.additions || 0)), " ", el("span", "del", "-" + (file.deletions || 0)), " ",
+      file.status && file.status !== "modified" ? badge(file.status) : null, file.truncated ? badge("truncated") : null);
+    d.appendChild(head);
+    var box = el("div"), done = false;
+    d.appendChild(box);
+    d.addEventListener("toggle", function () { if (d.open && !done) { done = true; fillDiff(box, file); } });
+    return d;
+  }
+  function logItem(e, group) {
+    var li = el("li", "k-" + group);
+    var top = el("div", "when", stamp(Date.parse(e.ts)) + " · ");
+    top.appendChild(badge(e.kind));
+    if (e.kind === "commit") { top.appendChild(badge(e.change || "feature")); }
+    if (e.role) { top.appendChild(badge(e.role)); }
+    if (e.state) { top.appendChild(badge(e.state)); }
+    if (e.kind === "ci.run" && e.conclusion) { top.appendChild(badge(e.conclusion)); }
+    if (e.actor || e.author) { top.appendChild(document.createTextNode(e.actor || e.author)); }
+    li.appendChild(top);
+    if (e.kind === "commit") {
+      add(li, link(e.url, String(e.sha || "").slice(0, 7)), " ", e.subject || "");
+      if (e.why) { li.appendChild(el("div", "why", "Why: " + e.why)); }
+      (e.files || []).forEach(function (f) { li.appendChild(fileNode(f)); });
+    } else if (e.kind === "comment" || e.kind === "review") {
+      add(li, el("div", "pre", e.excerpt || e.detail || ""), safeUrl(e.url) ? link(e.url, "open") : null);
+    } else if (e.kind === "review.comment") {
+      add(li, el("div", null, (e.path || "") + (e.line ? ":" + e.line : "") + (e.resolved === true ? " (resolved)" : "")),
+        el("div", "pre", e.excerpt || ""), safeUrl(e.url) ? link(e.url, "open") : null);
+    } else if (e.kind === "ci.run") {
+      var text = (e.workflow || "run") + (e.duration !== null && e.duration !== undefined ? ", " + e.duration + " s" : "") +
+        (e.failed_job ? " — failed in " + e.failed_job + (e.failed_step ? " at " + e.failed_step : "") : "");
+      add(li, text + " ", safeUrl(e.url) ? link(e.url, "open") : null);
+    } else {
+      var bits = [e.detail, e.outcome, e.base && e.head ? e.head + " into " + e.base : null].filter(Boolean);
+      if (bits.length) { li.appendChild(el("div", "pre", bits.join(" · "))); }
+    }
+    return li;
+  }
+  function problemItem(p) {
+    var li = el("li");
+    var top = el("div", "when", stamp(Date.parse(p.ts)) + " · ");
+    top.appendChild(badge(p.source === "ci.run" ? "ci" : p.source));
+    if (p.state || p.role) { top.appendChild(badge(p.state || p.role)); }
+    top.appendChild(p.resolved ? badge("resolved") : badge("open"));
+    li.appendChild(top);
+    add(li, el("div", "pre", p.text || ""), safeUrl(p.url) ? link(p.url, "open the " + (p.source === "ci.run" ? "run" : p.source)) : null);
+    var fix = el("div", "why");
+    if (p.resolved && p.resolved_by && p.resolved_by.length) {
+      fix.appendChild(document.createTextNode("Fixed by "));
+      p.resolved_by.forEach(function (sha, n) {
+        if (n) { fix.appendChild(document.createTextNode(", ")); }
+        var c = COMMITS[sha];
+        fix.appendChild(c ? link(c.url, sha.slice(0, 7)) : el("span", null, sha.slice(0, 7)));
+        if (c && c.subject) { fix.appendChild(document.createTextNode(" " + c.subject)); }
+      });
+    } else { fix.textContent = "No commit has fixed this yet."; }
+    li.appendChild(fix);
+    return li;
+  }
+  function renderPanel() {
+    var panel = $("panel");
+    if (!sel) { panel.hidden = true; return; }
+    panel.hidden = false;
+    $("ptitle").textContent = sel.label + (sel.title ? " " + sel.title : "");
+    var sum = D.summaries[sel.id] || {}, dl = $("psummary");
+    dl.textContent = "";
+    LABELS.forEach(function (pair) {
+      var cell = el("div"); cell.appendChild(el("dt", null, pair[1])); cell.appendChild(el("dd", null, String(sum[pair[0]] || 0)));
+      dl.appendChild(cell);
+    });
+    var isIssue = sel.kind === "issue", problems = isIssue ? ((D.issues[sel.id.split(":")[1]] || {}).problems || []) : [];
+    $("pfix").hidden = !isIssue;
+    var list = $("problems"); list.textContent = "";
+    problems.forEach(function (p) { list.appendChild(problemItem(p)); });
+    $("pnone").hidden = problems.length > 0;
+    var notes = ((D.notes || {})[sel.id.split(":")[1]] || []).map(function (i) { return D.events[i]; });
+    $("pnotes").hidden = sel.kind !== "batch";
+    var nlist = $("notes"); nlist.textContent = "";
+    notes.forEach(function (e) { nlist.appendChild(logItem(e, "comments")); });
+    $("pnonotes").hidden = notes.length > 0;
+    var b = bounds(), log = $("log"), n = 0;
+    log.textContent = "";
+    sel.events.forEach(function (i) {
+      var group = D.logs[i];
+      if (!group || !on[group] || !b || times[i] < b.lo || times[i] > b.hi) { return; }
+      log.appendChild(logItem(D.events[i], group)); n++;
+    });
+    $("lognone").hidden = n > 0;
+  }
+  document.querySelectorAll("[data-log]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var key = button.getAttribute("data-log");
+      on[key] = !on[key];
+      button.setAttribute("aria-pressed", String(on[key]));
+      renderPanel();
+    });
+  });
+  $("pclose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function (ev) { if (ev.key === "Escape" && sel) { closePanel(); } });
 
   var legend = $("legend");
   D.states.forEach(function (s) {
@@ -1245,8 +1509,17 @@ def render_html(doc, refresh=None, now=None):
                 seen.append(value)
     states = [{"key": k, "label": k} for k in seen]
     markers = [{"key": k, "label": MARKER_LABELS[k]} for k in MARKER_COLORS]
+    summaries = {lane["id"]: lane_summary([events[i] for i in lane["events"]]) for group in groups for lane in group["lanes"]}
+    notes = {}  # batch key -> indexes of its cross-check and plan-amendment comments, whichever issue holds them
+    for index, event in enumerate(events):
+        if event.get("kind") == "comment" and event.get("role") in NOTE_ROLES and event.get("batch") is not None:
+            notes.setdefault(str(event["batch"]), []).append(index)
     data = {"states": states, "markers": markers, "events": events, "issues": doc.get("issues") or {}, "batches": doc.get("batches") or {},
-            "range": rng, "groups": groups, "kinds": kinds}
+            "range": rng, "groups": groups, "kinds": kinds, "marks": [marker_for(e) for e in events],
+            "logs": [log_group_of(e) for e in events], "logGroups": [{"key": k, "label": label} for k, label, _ in LOG_GROUPS],
+            "summaries": summaries, "notes": notes}
+    filters = "".join(f'<button type="button" data-log="{html.escape(k)}" aria-pressed="true">{html.escape(label)}</button>'
+                      for k, label, _ in LOG_GROUPS)
     meta = f'<meta http-equiv="refresh" content="{int(refresh)}">\n' if refresh else ""
     empty = '<p id="empty">No events in this range.</p>' if not events else '<p id="empty" hidden>No events in this range.</p>'
     return f"""<!DOCTYPE html>
@@ -1270,8 +1543,21 @@ def render_html(doc, refresh=None, now=None):
 </div>
 {_convergence_strip(doc.get("convergence"))}
 <div class="legend" id="legend" aria-label="Status colors"></div>
+<div id="layout">
+<main>
 <div id="chart"></div>
 {empty}
+</main>
+<aside id="panel" aria-label="Lane detail" hidden>
+<div class="phead"><h2 id="ptitle"></h2><button type="button" id="pclose">Close</button></div>
+<dl id="psummary"></dl>
+<section id="pfix"><h3>What needed fixing</h3><ul id="problems"></ul><p id="pnone" class="sub">Nothing needed fixing.</p></section>
+<section id="pnotes" hidden><h3>Cross-checks and amendments</h3><ul id="notes"></ul><p id="pnonotes" class="sub">None recorded.</p></section>
+<h3>Log</h3>
+<div class="filters" id="logfilter">{filters}</div>
+<ol id="log"></ol><p id="lognone" class="sub" hidden>No log entries in this range.</p>
+</aside>
+</div>
 <div id="tip" hidden></div>
 <script id="tl-data" type="application/json">{_json_for_script(data)}</script>
 <script>{PAGE_JS}</script>

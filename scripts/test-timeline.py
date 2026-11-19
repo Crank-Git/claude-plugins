@@ -901,17 +901,22 @@ b78["events"].append({"ts": "2026-11-20T01:00:00Z", "kind": "batch.merged", "iss
 b78["events"].append({"ts": "2026-11-20T01:00:00Z", "kind": "ci.run", "issue": 78, "pr": 8, "batch": 78, "actor": None, "from": None,
                       "to": None, "detail": None, "workflow": "validate", "conclusion": "failure", "started": None, "completed": None,
                       "duration": None, "url": "https://x/run/1", "sha": "abc", "failed_job": "t", "failed_step": "s"})
+b78["events"].append({"ts": "2026-11-19T22:50:00Z", "kind": "comment", "issue": 75, "pr": None, "batch": 78, "actor": "pm", "from": None,
+                      "to": None, "detail": None, "role": "plan-amendment", "excerpt": "**Amendment (batch cross-check addendum)**",
+                      "url": "https://x/issues/75#issuecomment-1", "problem": None})
+b78["events"].sort(key=lambda e: e["ts"])
 b78_page = payload(timeline.render_html(b78))
 bl = lane_of(b78_page, "batch:78")
-roles = {b78_page["events"][i].get("role") for i in bl["events"] if b78_page["events"][i]["kind"] == "comment"}
-check({"cross-check", "plan-amendment"} <= roles, f"the batch lane holds cross-check and amendment comments: {roles}")
+roles = {b78_page["events"][i]["role"] for i in b78_page["notes"]["78"]}
+check({"cross-check", "plan-amendment"} <= roles, f"the batch panel lists cross-check and amendment comments: {roles}")
+check(any(b78_page["events"][i].get("role") == "cross-check" for i in bl["events"]), "the batch lane holds the cross-check comment")
 check(any(b78_page["events"][i]["kind"] == "batch.merged" for i in bl["events"]), "the batch lane holds the batch merge")
 check(any(b78_page["events"][i]["kind"] == "ci.run" for i in bl["events"]), "the batch lane holds batch CI runs")
 check(b78_page["summaries"]["batch:78"]["ci_failures"] == 1, "the batch summary counts the failed batch run")
 bmarks = {b78_page["marks"][i] for i in bl["events"]}
 check({"note", "batch", "ci"} <= bmarks, f"batch lane markers: {bmarks}")
-check(not [i for i in lane_of(b78_page, "issue:75")["events"] if b78_page["events"][i].get("role") in ("cross-check", "plan-amendment")],
-      "batch notes stay off member lanes")
+check(not [i for i in lane_of(b78_page, "issue:75")["events"] if b78_page["events"][i].get("role") == "cross-check"],
+      "the cross-check comment stays off member lanes")
 
 # 7. Escaping: hostile patch and comment text cannot break the page.
 hostile2 = copy.deepcopy(s_gh)
