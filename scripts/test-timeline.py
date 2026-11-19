@@ -836,6 +836,111 @@ with tempfile.TemporaryDirectory() as tmp:
             check(keyset(live) == keyset(timeline.normalize(story2(forge_type))), f"live {forge_type} granular events match the bundle run")
             check(live["issues"]["51"]["problems"] == timeline.normalize(story2(forge_type))["issues"]["51"]["problems"], f"live {forge_type} problems match")
 
+# ---------------------------------------------------------------- drill-down (the renderer)
+# The page draws the panel in the browser; these cases check the data and markup it draws from.
+def lane_of(page_data, lane_id):
+    return next(lane for g in page_data["groups"] for lane in g["lanes"] if lane["id"] == lane_id)
+
+
+def with_agent_message(doc):
+    doc = copy.deepcopy(doc)
+    doc["events"].append({"ts": "2026-06-01T12:00:00Z", "kind": "agent.messaged", "issue": 51, "pr": None, "batch": 50, "actor": None,
+                          "from": None, "to": None, "detail": "rework", "agent": "issue-worker", "session": "s1"})
+    return doc
+
+
+dd_doc = with_agent_message(s_gh)
+dd_page = timeline.render_html(dd_doc)
+dd = payload(dd_page)
+
+# 1. Summary counts per lane, computed over every event of the lane.
+sm = dd["summaries"]["issue:51"]
+check(sm["commits"] == 6 and sm["files"] == 7 and sm["rework_rounds"] == 1 and sm["review_rounds"] == 1 and sm["ci_failures"] == 1,
+      f"issue 51 summary: {sm}")
+check(sm["additions"] == sum(f["additions"] for e in kinds_of(dd_doc, "commit") for f in e["files"])
+      and sm["deletions"] == sum(f["deletions"] for e in kinds_of(dd_doc, "commit") for f in e["files"]), f"summary lines: {sm}")
+
+# 2. What needed fixing: the problems and their fix commits reach the page unchanged.
+check(dd["issues"]["51"]["problems"] == dd_doc["issues"]["51"]["problems"] and len(dd["issues"]["51"]["problems"]) == 3,
+      "problems are embedded for the panel")
+check(all(p["url"] and "resolved_by" in p for p in dd["issues"]["51"]["problems"]), "each problem has a link and resolved_by")
+
+# 3. Commits keep their diffs for lazy rendering, with the truncated flag.
+cap_page = payload(timeline.render_html(capped))
+cap_commit = next(e for e in cap_page["events"] if e["kind"] == "commit")
+check({f["path"]: f["truncated"] for f in cap_commit["files"]}["big.py"] is True, "a truncated patch keeps its flag in the page data")
+for needle in ("truncated", "details", "toggle"):
+    check(needle in timeline.PAGE_JS, f"page script handles {needle!r}")
+
+# 4. Markers: each event kind maps to a marker, every marker is in the legend table.
+mk = dict(zip((e["kind"] + ":" + str(e.get("role") or e.get("change") or e.get("state") or e.get("conclusion")) for e in dd_doc["events"]), dd["marks"]))
+for key, want in (("comment:gate.rework", "rework"), ("commit:fix", "fix"), ("ci.run:failure", "ci"),
+                  ("review:changes_requested", "review"), ("agent.messaged:None", "msg")):
+    check(mk.get(key) == want, f"{key} draws marker {want}: {mk.get(key)}")
+check(mk.get("ci.run:success") is None and mk.get("commit:feature") is None, "a passing run and a plain commit draw no issue-lane marker")
+check(len(dd["marks"]) == len(dd_doc["events"]), "one marks entry per event")
+check({m for m in dd["marks"] if m} <= set(timeline.MARKER_COLORS), "every marker in use is in MARKER_COLORS")
+for key in ("rework", "fix", "ci", "review", "note", "msg"):
+    check(key in timeline.MARKER_COLORS and key in timeline.MARKER_LABELS, f"marker {key} is in the colour and label tables")
+    check({m["key"] for m in dd["markers"]} >= {key}, f"the legend lists marker {key}")
+    check(f".mk-{key}" in timeline.PAGE_CSS, f"CSS styles marker {key}")
+
+# 5. Kind filter: every log kind belongs to one group, the groups drive the filter buttons.
+check([g["key"] for g in dd["logGroups"]][:5] == ["commits", "comments", "reviews", "ci", "agents"], f"log groups: {dd['logGroups']}")
+lg = dict(zip((e["kind"] for e in dd_doc["events"]), dd["logs"]))
+check(lg["commit"] == "commits" and lg["comment"] == "comments" and lg["review"] == "reviews" and lg["review.comment"] == "reviews"
+      and lg["ci.run"] == "ci" and lg["agent.messaged"] == "agents", f"log group per kind: {lg}")
+for g in dd["logGroups"]:
+    check(f'data-log="{g["key"]}"' in dd_page, f"the panel has a {g['key']} filter button")
+check('id="panel"' in dd_page and 'id="log"' in dd_page, "the page has the panel markup")
+
+# 6. Batch lane drill-down: cross-check findings, amendments and the batch merge.
+b78 = copy.deepcopy(doc78)
+b78["events"].append({"ts": "2026-11-20T01:00:00Z", "kind": "batch.merged", "issue": 78, "pr": 8, "batch": 78, "actor": "pm",
+                      "from": None, "to": None, "detail": None, "base": "dev", "head": "batch/78-x"})
+b78["events"].append({"ts": "2026-11-20T01:00:00Z", "kind": "ci.run", "issue": 78, "pr": 8, "batch": 78, "actor": None, "from": None,
+                      "to": None, "detail": None, "workflow": "validate", "conclusion": "failure", "started": None, "completed": None,
+                      "duration": None, "url": "https://x/run/1", "sha": "abc", "failed_job": "t", "failed_step": "s"})
+b78_page = payload(timeline.render_html(b78))
+bl = lane_of(b78_page, "batch:78")
+roles = {b78_page["events"][i].get("role") for i in bl["events"] if b78_page["events"][i]["kind"] == "comment"}
+check({"cross-check", "plan-amendment"} <= roles, f"the batch lane holds cross-check and amendment comments: {roles}")
+check(any(b78_page["events"][i]["kind"] == "batch.merged" for i in bl["events"]), "the batch lane holds the batch merge")
+check(any(b78_page["events"][i]["kind"] == "ci.run" for i in bl["events"]), "the batch lane holds batch CI runs")
+check(b78_page["summaries"]["batch:78"]["ci_failures"] == 1, "the batch summary counts the failed batch run")
+bmarks = {b78_page["marks"][i] for i in bl["events"]}
+check({"note", "batch", "ci"} <= bmarks, f"batch lane markers: {bmarks}")
+check(not [i for i in lane_of(b78_page, "issue:75")["events"] if b78_page["events"][i].get("role") in ("cross-check", "plan-amendment")],
+      "batch notes stay off member lanes")
+
+# 7. Escaping: hostile patch and comment text cannot break the page.
+hostile2 = copy.deepcopy(s_gh)
+evil = '</script><img src=x onerror=alert(1)> & "q"'
+for e in hostile2["events"]:
+    if e["kind"] == "commit":
+        e["files"][0]["patch"] = "@@ -1 +1 @@\n+" + evil
+        e["subject"] = evil
+        break
+for e in hostile2["events"]:
+    if e["kind"] == "comment":
+        e["excerpt"] = evil
+        break
+hp = timeline.render_html(hostile2)
+check(hp.lower().count("</script>") == 2 and "<img" not in hp, "hostile patch and comment text cannot close the script or add markup")
+check(any(evil in (f["patch"] or "") for e in payload(hp)["events"] if e["kind"] == "commit" for f in e["files"]), "hostile patch round-trips as data")
+check(any(e.get("excerpt") == evil for e in payload(hp)["events"]), "hostile comment round-trips as data")
+check("innerHTML" not in hp and "insertAdjacentHTML" not in hp and "document.write" not in hp, "the page never writes HTML from data")
+for bad in ("<script src", "<link", "@import", "<iframe", "url(", "fetch(", "XMLHttpRequest"):
+    check(bad not in hp, f"drill-down page contains {bad!r}")
+allowed = {e["url"] for e in hostile2["events"] if e.get("url")} | doc_urls(hostile2) \
+    | {p["url"] for i in hostile2["issues"].values() for p in i.get("problems", [])}
+found = set(re.findall(r"https?://[^\s\"'\\<>]+", hp))
+check(found <= allowed, f"the page holds only tracker URLs: {found - allowed}")
+
+# 8. Themes and narrow widths.
+check("@media (max-width" in timeline.PAGE_CSS and "#panel" in timeline.PAGE_CSS, "panel has a narrow layout")
+check(timeline.PAGE_CSS.count("--mk-note:") == 2 and timeline.PAGE_CSS.count("--mk-msg:") == 2, "new markers set in both themes")
+
 if failures:
     for failure in failures:
         print(f"FAIL {failure}")
