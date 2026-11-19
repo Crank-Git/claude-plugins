@@ -365,7 +365,7 @@ page = timeline.render_html(hostile)
 check(payload(page)["issues"]["51"]["title"] == hostile["issues"]["51"]["title"], "title with </script> round-trips")
 check(payload(page)["events"][0]["detail"] == "<!-- </SCRIPT>", "detail with a comment opener round-trips")
 check('<b id="pwn">' not in page and "<i>r</i>" not in page, "markup in data is escaped")
-check(page.lower().count("</script>") == 2, "only the page's own two script tags close")
+check(page.lower().count("</script>") == 3, "only the page's own three script tags close")
 
 # Empty and filtered-empty states.
 empty_page = timeline.render_html({"version": 1, "forge": {"type": "github", "owner": "o", "repo": "r"},
@@ -934,7 +934,7 @@ for e in hostile2["events"]:
         e["excerpt"] = evil
         break
 hp = timeline.render_html(hostile2)
-check(hp.lower().count("</script>") == 2 and "<img" not in hp, "hostile patch and comment text cannot close the script or add markup")
+check(hp.lower().count("</script>") == 3 and "<img" not in hp, "hostile patch and comment text cannot close the script or add markup")
 check(any(evil in (f["patch"] or "") for e in payload(hp)["events"] if e["kind"] == "commit" for f in e["files"]), "hostile patch round-trips as data")
 check(any(e.get("excerpt") == evil for e in payload(hp)["events"]), "hostile comment round-trips as data")
 check("innerHTML" not in hp and "insertAdjacentHTML" not in hp and "document.write" not in hp, "the page never writes HTML from data")
@@ -1079,7 +1079,7 @@ check("intersects" in timeline.PAGE_JS and "getBoundingClientRect" in timeline.P
 for word in ("function tickLabel", "ResizeObserver", "function spread", "function plain"):
     check(word in timeline.PAGE_JS, f"the script defines {word.split()[-1]}")
 check("scrollbar-gutter:stable" in timeline.LAYOUT_CSS.replace(" ", ""), "the chart reserves its scrollbar gutter")
-check("repeating-linear-gradient" in timeline.LAYOUT_CSS and "seg-batched" in timeline.LAYOUT_CSS, "batched draws as a hatched segment")
+check("2px dashed var(--st-batched)" in timeline.LAYOUT_CSS and "repeating-" not in timeline.LAYOUT_CSS, "batched draws as an outlined segment")
 check('"seg seg-"' in timeline.PAGE_JS, "the script classes each segment by state")
 check("alert" in timeline.PAGE_JS and ".alert" in timeline.LAYOUT_CSS, "non-zero rework, CI and review tiles get emphasis")
 
