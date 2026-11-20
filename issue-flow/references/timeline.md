@@ -429,7 +429,10 @@ each listing page as one possible call, because a 304 is not known before the re
 **Measured.** Two back-to-back collects of this repository, on the 1-day window
 `--since 2026-11-19T00:00:00Z --until 2026-11-20T00:00:00Z`, with `--pr-repo` for the fork, on
 2026-11-20: the first made 155 calls and the second made 12. The 12 are 11 listing pages and the
-CI runs of the one open PR. The two documents are equal.
+CI runs of the one open PR. The two documents are equal. With conditional listing reads, the
+same check on 2026-11-20 made 162 calls cold and 13 warm: `13 API calls (174 cached, 11 not
+modified)`. The 11 listing pages got 304, and `core.used` went up by 2, for the CI runs of the
+two open PRs.
 
 **Count the calls of a run.** `scripts/count-gh.py` wraps `gh` (or `tea`) through `IFW_GH`
 (or `IFW_TEA`). The wrapper logs each call and then runs the real command:
