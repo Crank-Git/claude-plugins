@@ -1409,6 +1409,9 @@ check(timeline.pr_repo_list("o/r", ["o/fork,o/other", "o/fork", "o/r", " o/x "])
 FAKE_MULTI = r"""
 import json, os, re, sys
 path = sys.argv[-1]
+# A server with rate limits off answers the quota read (#93) with 404, so the quota guard is off.
+if path == "rate_limit":
+    print(json.dumps({"message": "Not Found"})); sys.exit(1)
 data = json.load(open(os.environ["FAKE_DATA"]))
 page = re.search(r"[?&]page=(\d+)", path)
 if page and int(page.group(1)) > 1:
@@ -1619,6 +1622,9 @@ def repo_state(path):
 GIT_FAKE = r'''
 import json, os, re, sys
 path = sys.argv[-1]
+# A server with rate limits off answers the quota read (#93) with 404, so the quota guard is off.
+if path == "rate_limit":
+    print(json.dumps({"message": "Not Found"})); sys.exit(1)
 data = json.load(open(os.environ["FAKE_DATA"]))
 if re.search(r"[?&]page=([2-9]|\d\d)", path):
     print("[]"); sys.exit(0)
@@ -1883,7 +1889,8 @@ with tempfile.TemporaryDirectory() as tmp:
         else:
             proc = subprocess.run([sys.executable, SCRIPT, *args, "--local-events", "off"], capture_output=True,
                                   text=True, cwd=cwd, env={**os.environ, **env})
-        return proc, count_gh.calls(counter)
+        # The quota reads (#93) cost no quota and are not in the summary's count.
+        return proc, [c for c in count_gh.calls(counter) if not c.endswith(" rate_limit")]
 
     def others(calls):
         return [c for c in calls if not re.search(LISTING, c)]
