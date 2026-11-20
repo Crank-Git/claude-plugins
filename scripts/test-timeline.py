@@ -1639,6 +1639,7 @@ with tempfile.TemporaryDirectory() as tmp:
     put(src, "gone.txt", "bye\n")
     put(src, "move.txt", "".join(f"line {i}\n" for i in range(20)))
     put(src, "bin.dat", bytes(range(256)))
+    put(src, "gap.txt", "".join(f"g {i}\n" for i in range(20)))
     git(src, "add", "-A")
     git(src, "commit", "-q", "-m", "base")
     git(src, "push", "-q", bare, "main")
@@ -1651,6 +1652,8 @@ with tempfile.TemporaryDirectory() as tmp:
     os.unlink(os.path.join(src, "move.txt"))
     put(src, "moved.txt", "".join(f"line {i}\n" for i in range(19)) + "LINE 19\n")
     put(src, "bin.dat", bytes(reversed(range(256))))
+    # Two changes one line apart beyond their context: GitHub joins them into one hunk.
+    put(src, "gap.txt", "".join(f"{'G' if i in (3, 11) else 'g'} {i}\n" for i in range(20)))
     git(src, "add", "-A")
     git(src, "commit", "-q", "-m", "change files\n\nChange: feature\nWhy: Fixture.")
     c1 = git(src, "rev-parse", "HEAD").strip()
@@ -1669,8 +1672,11 @@ with tempfile.TemporaryDirectory() as tmp:
              {"filename": "big.txt", "status": "added", "additions": 500, "deletions": 0, "changes": 500,
               "patch": "@@ -0,0 +1,500 @@\n" + "\n".join(f"+row {i}" for i in range(500))},
              {"filename": "bin.dat", "status": "modified", "additions": 0, "deletions": 0, "changes": 0},
+             {"filename": "gap.txt", "status": "modified", "additions": 2, "deletions": 2, "changes": 4,
+              "patch": "@@ -1,15 +1,15 @@\n g 0\n g 1\n g 2\n-g 3\n+G 3\n" + "".join(f" g {i}\n" for i in range(4, 11))
+                       + "-g 11\n+G 11\n g 12\n g 13\n g 14"},
              {"filename": "moved.txt", "previous_filename": "move.txt", "status": "renamed", "additions": 1,
-              "deletions": 1, "changes": 2, "patch": "@@ -17,4 +17,4 @@ line 15\n line 16\n line 17\n line 18\n-line 19\n+LINE 19"},
+              "deletions": 1, "changes": 2, "patch": "@@ -17,4 +17,4 @@ def heading_github_found():\n line 16\n line 17\n line 18\n-line 19\n+LINE 19"},
              {"filename": "wide.txt", "status": "added", "additions": 1, "deletions": 0, "changes": 1,
               "patch": "@@ -0,0 +1 @@\n+" + "y" * 40000}],
         c2: [{"filename": "gone.txt", "status": "removed", "additions": 0, "deletions": 1, "changes": 1,
@@ -1741,6 +1747,8 @@ with tempfile.TemporaryDirectory() as tmp:
         check(wf["wide.txt"]["truncated"] and len(wf["wide.txt"]["patch"].encode()) == 32768, "#90 the 32 KB cap holds for a git patch")
         check(wf["bin.dat"]["patch"] is None and wf["bin.dat"]["additions"] == 0, "#90 a binary file has no patch and zero counts")
         check(wf["moved.txt"]["status"] == "renamed" and wf["gone.txt"]["status"] == "removed", "#90 git gives renamed and removed")
+        # git and the forge pick different section headings for a hunk, so every patch drops it.
+        check(wf["moved.txt"]["patch"].startswith("@@ -17,4 +17,4 @@\n line 16"), f"#90 a hunk header keeps no heading: {wf['moved.txt']['patch'][:40]!r}")
     for label, extra in (("budget", ["--max-diff-bytes", "33000"]), ("nodiffs", ["--no-diffs"])):
         a, _ = live(f"{label}-api", "api", data, *extra)
         g, _ = live(f"{label}-git", "git", data, *extra)
@@ -1757,8 +1765,13 @@ with tempfile.TemporaryDirectory() as tmp:
     gt_proc, gt_calls = live("gitea", None, gt_data, forge_type="gitea")
     check(gt_proc.returncode == 0 and gt_calls == [], f"#90 gitea reads no .diff through the API: {gt_calls} {gt_proc.stderr[:300]}")
     if gt_proc.returncode == 0 and api_proc.returncode == 0:
-        check([e["files"] for e in kinds_of(json.loads(gt_proc.stdout), "commit")] ==
-              [e["files"] for e in kinds_of(json.loads(api_proc.stdout), "commit")], "#90 gitea git-built files equal the GitHub API-built ones")
+        # Gitea's `.diff` route runs plain `git diff`, which keeps two hunks one line apart.
+        gt_want = copy.deepcopy([e["files"] for e in kinds_of(json.loads(api_proc.stdout), "commit")])
+        gap = next(f for f in gt_want[0] if f["path"] == "gap.txt")
+        gap["patch"] = ("@@ -1,7 +1,7 @@\n g 0\n g 1\n g 2\n-g 3\n+G 3\n g 4\n g 5\n g 6\n"
+                        "@@ -9,7 +9,7 @@\n g 8\n g 9\n g 10\n-g 11\n+G 11\n g 12\n g 13\n g 14")
+        check([e["files"] for e in kinds_of(json.loads(gt_proc.stdout), "commit")] == gt_want,
+              "#90 gitea git-built files equal the API-built ones")
 
     # 3. A commit git does not have is read through the API, and one note counts it.
     lost = "f" * 40
@@ -1790,8 +1803,15 @@ with tempfile.TemporaryDirectory() as tmp:
               {"IFW_WATCH_FAST": "1"}).returncode == 5, "#90 watch hands --diff-source to collect, which rejects a bad value")
 
     # The counting helper counts the calls of a run, and a match narrows the count.
-    check(count_gh.main(["count", os.path.join(tmp, "count-api"), "--match", "/commits/"]) == 0, "#90 count-gh count exits 0")
+    counted = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "count-gh.py"), "count",
+                              os.path.join(tmp, "count-api"), "--match", "/commits/"], capture_output=True, text=True)
+    check(counted.returncode == 0 and counted.stdout == "2\n", f"#90 count-gh count prints the matching calls: {counted.stdout!r}")
     check(len(count_gh.calls(os.path.join(tmp, "count-api"))) > len(api_calls) == 2, "#90 count-gh logs every call, not only commit reads")
+
+# A remote matches its PR repository in every URL form a forge gives.
+for url in ("https://host/O/R.git", "git@host:o/r.git", "ssh://git@host:2222/o/r", "/srv/o/r.git/", "https://host/o/r"):
+    check(timeline._url_repo(url) == "o/r", f"#90 {url} names o/r: {timeline._url_repo(url)}")
+check(timeline._url_repo("r") is None and timeline._url_repo("") is None, "#90 a URL without an owner names no repository")
 
 if failures:
     for failure in failures:
