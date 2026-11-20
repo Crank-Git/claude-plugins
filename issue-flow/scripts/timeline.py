@@ -1019,7 +1019,7 @@ class Cache:
 
     def put(self, key, value):
         """Store `value` under `key`. A failed write leaves the old entry; the collect goes on."""
-        if not self.write or value is None:
+        if not self.write or key is None or value is None:
             return
         path = self.path_of(key)
         tmp = None

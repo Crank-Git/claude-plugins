@@ -2041,6 +2041,7 @@ with tempfile.TemporaryDirectory() as tmp:
     store.put("k", [])
     check(store.has("k") and store.get("k") == [], "#91 an empty list is an entry, not a miss")
     store.put("none", None)
+    store.put(None, [1])
     check(not store.has("none"), "#91 None is never stored")
     check(store.hits == 1, f"#91 get counts the hits, has does not: {store.hits}")
     os.makedirs(os.path.dirname(store.path_of("bad")), exist_ok=True)
