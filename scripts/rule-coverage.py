@@ -142,7 +142,7 @@ def blocks(text):
             current = None
             continue
         starts_new = LIST_ITEM.match(line) or line.lstrip().startswith("|")
-        if current and (starts_new or current[1] != phase):
+        if current and starts_new:
             yield current
             current = None
         piece = strip_line(line)
