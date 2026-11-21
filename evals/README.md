@@ -361,6 +361,9 @@ A `ship` verdict is not proof that no small regression exists.
 
 ### 0.20.0, PM suite
 
+`evals/BASELINE.md` has the full 0.20.0 numbers for both suites. This section keeps the
+PM run notes.
+
 The runs were on 2026-11-21, with Claude Code 2.1.330 and the default model
 (claude-opus-5-5): 6 cases, 3 runs each, at concurrency 1. Total cost: $10.00, judges
 included.
