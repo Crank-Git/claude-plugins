@@ -1,0 +1,2059 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+    "git_sha": null,
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261121T220836Z",
+  "finished": "20261121T222114Z",
+  "max_cost_usd": 25.0,
+  "total_cost_usd": 5.583739,
+  "partial": false,
+  "records": [
+    {
+      "case": "pm-a0-split-status",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS. Each of the three repair comments is short and names the removed label and the kept label, and the only issues touched are #21, #22 and #24 with no other labels removed."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.1858182,
+      "judge_cost_usd": 0.000724,
+      "usage": {
+        "input": 10,
+        "output": 1124,
+        "cache_read": 107451,
+        "cache_write": 17726
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1124,
+          "cacheReadInputTokens": 107451,
+          "cacheCreationInputTokens": 17726,
+          "webSearchRequests": 0,
+          "costUSD": 0.1858182,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 71,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 17726,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 18.088,
+      "wall_s": 18.653,
+      "session_id": "a69c3729-cdda-48ec-ba5a-96b90da5d3a9",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "a69c3729-cdda-48ec-ba5a-96b90da5d3a9",
+            "turns": 5,
+            "input": 10,
+            "output": 1124,
+            "cache_read": 107451,
+            "cache_write": 17726,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.185818
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1124,
+          "cache_read": 107451,
+          "cache_write": 17726,
+          "cost_usd": 0.185818,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1124,
+              "cache_read": 107451,
+              "cache_write": 17726,
+              "cost_usd": 0.185818
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 126311,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-a0-split-status",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: Each of issues #21, #22, and #24 gets one `--remove-label` edit and a short repair comment naming the removed and kept labels, and the log shows no other issues changed or other labels removed."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2106104,
+      "judge_cost_usd": 0.000891,
+      "usage": {
+        "input": 10,
+        "output": 1377,
+        "cache_read": 110152,
+        "cache_write": 20125
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1377,
+          "cacheReadInputTokens": 110152,
+          "cacheCreationInputTokens": 20125,
+          "webSearchRequests": 0,
+          "costUSD": 0.2106104,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 131,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 20125,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 19.519,
+      "wall_s": 20.147,
+      "session_id": "b4523e30-5596-4017-a807-238a79b74a3c",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "b4523e30-5596-4017-a807-238a79b74a3c",
+            "turns": 5,
+            "input": 10,
+            "output": 1377,
+            "cache_read": 110152,
+            "cache_write": 20125,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.21061
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1377,
+          "cache_read": 110152,
+          "cache_write": 20125,
+          "cost_usd": 0.21061,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1377,
+              "cache_read": 110152,
+              "cache_write": 20125,
+              "cost_usd": 0.21061
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 131664,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-a0-split-status",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS. Each repair comment is short and names the removed and kept labels, and the log touches only issues #21, #22 and #24, with each edit removing only its single named label (status:in-review or status:ready) and leaving the kept label in place."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2020702,
+      "judge_cost_usd": 0.000735,
+      "usage": {
+        "input": 10,
+        "output": 1317,
+        "cache_read": 108851,
+        "cache_write": 19240
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1317,
+          "cacheReadInputTokens": 108851,
+          "cacheCreationInputTokens": 19240,
+          "webSearchRequests": 0,
+          "costUSD": 0.2020702,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 75,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 19240,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 21.52,
+      "wall_s": 22.115,
+      "session_id": "ad884d1e-b701-4293-afd6-05378c16ec02",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "ad884d1e-b701-4293-afd6-05378c16ec02",
+            "turns": 5,
+            "input": 10,
+            "output": 1317,
+            "cache_read": 108851,
+            "cache_write": 19240,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.20207
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1317,
+          "cache_read": 108851,
+          "cache_write": 19240,
+          "cost_usd": 0.20207,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1317,
+              "cache_read": 108851,
+              "cache_write": 19240,
+              "cost_usd": 0.20207
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 129418,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The #30 cross-check comment names the compared plans (#31 and #32) and reports one pair found (#31 \u2192 #32, the `--json` flag dependency), so it is not a bare \"checked\" comment."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.46790160000000003,
+      "judge_cost_usd": 0.000929,
+      "usage": {
+        "input": 20,
+        "output": 4252,
+        "cache_read": 358588,
+        "cache_write": 38883
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 20,
+          "outputTokens": 4252,
+          "cacheReadInputTokens": 358588,
+          "cacheCreationInputTokens": 38883,
+          "webSearchRequests": 0,
+          "costUSD": 0.46790160000000003,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 799,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 38883,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 12,
+      "duration_s": 61.933,
+      "wall_s": 62.518,
+      "session_id": "4b9ae592-d8d7-429f-8ee6-2387e73430dd",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "4b9ae592-d8d7-429f-8ee6-2387e73430dd",
+            "turns": 10,
+            "input": 20,
+            "output": 4252,
+            "cache_read": 358588,
+            "cache_write": 38883,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.467902
+          }
+        ],
+        "totals": {
+          "turns": 10,
+          "input": 20,
+          "output": 4252,
+          "cache_read": 358588,
+          "cache_write": 38883,
+          "cost_usd": 0.467902,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 10,
+              "input": 20,
+              "output": 4252,
+              "cache_read": 358588,
+              "cache_write": 38883,
+              "cost_usd": 0.467902
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 401743,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The #30 cross-check comment names the compared plan comments of #31 and #32 and states the pair it found (#31 \u2192 #32, the `--json` flag), so it is not a bare \"checked.\""
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.5854305499999999,
+      "judge_cost_usd": 0.000971,
+      "usage": {
+        "input": 32,
+        "output": 5941,
+        "cache_read": 647033,
+        "cache_write": 41870
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 32,
+          "outputTokens": 5941,
+          "cacheReadInputTokens": 647033,
+          "cacheCreationInputTokens": 41870,
+          "webSearchRequests": 0,
+          "costUSD": 0.5833145999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 815,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 41870,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 762,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 13878,
+          "webSearchRequests": 0,
+          "costUSD": 0.00211595,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 436,
+          "cacheCreationEphemeral5mInputTokens": 13878,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 17,
+      "duration_s": 83.091,
+      "wall_s": 83.655,
+      "session_id": "5273f40b-c11e-4236-ab32-b16352d26023",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "5273f40b-c11e-4236-ab32-b16352d26023",
+            "turns": 16,
+            "input": 32,
+            "output": 5941,
+            "cache_read": 647033,
+            "cache_write": 41870,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.583315
+          },
+          {
+            "type": "general-purpose",
+            "id": "a2f3df202f0d5e332",
+            "turns": 1,
+            "input": 2,
+            "output": 762,
+            "cache_read": 0,
+            "cache_write": 13878,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.002116
+          }
+        ],
+        "totals": {
+          "turns": 17,
+          "input": 34,
+          "output": 6703,
+          "cache_read": 647033,
+          "cache_write": 55748,
+          "cost_usd": 0.585431,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 16,
+              "input": 32,
+              "output": 5941,
+              "cache_read": 647033,
+              "cache_write": 41870,
+              "cost_usd": 0.583315
+            },
+            "general-purpose": {
+              "agents": 1,
+              "turns": 1,
+              "input": 2,
+              "output": 762,
+              "cache_read": 0,
+              "cache_write": 13878,
+              "cost_usd": 0.002116
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 694876,
+        "subagents": 14642
+      }
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The cross-check comment on #30 names the compared plan comments of #31 and #32, and lists the one pair it found (#31 adds `--json` to `widgets count`, which #32's README plan depends on)."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.497519025,
+      "judge_cost_usd": 0.000999,
+      "usage": {
+        "input": 24,
+        "output": 4591,
+        "cache_read": 473431,
+        "cache_write": 38639
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 24,
+          "outputTokens": 4591,
+          "cacheReadInputTokens": 473431,
+          "cacheCreationInputTokens": 38639,
+          "webSearchRequests": 0,
+          "costUSD": 0.4957142,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 542,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 38639,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 706,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 11613,
+          "webSearchRequests": 0,
+          "costUSD": 0.001804825,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 466,
+          "cacheCreationEphemeral5mInputTokens": 11613,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 13,
+      "duration_s": 64.915,
+      "wall_s": 65.55,
+      "session_id": "4d814ce8-6c12-47e1-a791-91c665308d03",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "4d814ce8-6c12-47e1-a791-91c665308d03",
+            "turns": 12,
+            "input": 24,
+            "output": 4591,
+            "cache_read": 473431,
+            "cache_write": 38639,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.495714
+          },
+          {
+            "type": "Explore",
+            "id": "a7a92c849b6820090",
+            "turns": 1,
+            "input": 2,
+            "output": 706,
+            "cache_read": 0,
+            "cache_write": 11613,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.001805
+          }
+        ],
+        "totals": {
+          "turns": 13,
+          "input": 26,
+          "output": 5297,
+          "cache_read": 473431,
+          "cache_write": 50252,
+          "cost_usd": 0.497519,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 12,
+              "input": 24,
+              "output": 4591,
+              "cache_read": 473431,
+              "cache_write": 38639,
+              "cost_usd": 0.495714
+            },
+            "Explore": {
+              "agents": 1,
+              "turns": 1,
+              "input": 2,
+              "output": 706,
+              "cache_read": 0,
+              "cache_write": 11613,
+              "cost_usd": 0.001805
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 516685,
+        "subagents": 12321
+      }
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 0.6666666666666666,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": false,
+          "detail": "FAIL The PM sent #11 back for a missing pre-patch run, which is the outcome the rubric requires, but the rubric also says the PM \"asks for that run,\" and the material shows it did: the send-back message requests \"the pre-patch test result.\" So the PM's decision matches the rubric."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 0,
+        "total": 1
+      },
+      "cost_usd": 0.26608020000000004,
+      "judge_cost_usd": 0.000814,
+      "usage": {
+        "input": 12,
+        "output": 2153,
+        "cache_read": 146741,
+        "cache_write": 24203
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 2153,
+          "cacheReadInputTokens": 146741,
+          "cacheCreationInputTokens": 24203,
+          "webSearchRequests": 0,
+          "costUSD": 0.26608020000000004,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 385,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 24203,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 31.576,
+      "wall_s": 32.212,
+      "session_id": "7aa5fb05-60a6-479e-95c0-d0290efdfc02",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "7aa5fb05-60a6-479e-95c0-d0290efdfc02",
+            "turns": 6,
+            "input": 12,
+            "output": 2153,
+            "cache_read": 146741,
+            "cache_write": 24203,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.26608
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 2153,
+          "cache_read": 146741,
+          "cache_write": 24203,
+          "cost_usd": 0.26608,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 2153,
+              "cache_read": 146741,
+              "cache_write": 24203,
+              "cost_usd": 0.26608
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 173109,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The PM held PR #12 for #11 and sent it back, citing the missing pre-patch run that shows the new tests failing without the change, so it did not sub-merge."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2960024,
+      "judge_cost_usd": 0.000777,
+      "usage": {
+        "input": 16,
+        "output": 2674,
+        "cache_read": 214212,
+        "cache_write": 24952
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 2674,
+          "cacheReadInputTokens": 214212,
+          "cacheCreationInputTokens": 24952,
+          "webSearchRequests": 0,
+          "costUSD": 0.2960024,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 496,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 24952,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 9,
+      "duration_s": 37.767,
+      "wall_s": 38.342,
+      "session_id": "c80efe8c-46c7-4f65-9678-8a7c4f060092",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "c80efe8c-46c7-4f65-9678-8a7c4f060092",
+            "turns": 8,
+            "input": 16,
+            "output": 2674,
+            "cache_read": 214212,
+            "cache_write": 24952,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.296002
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 2674,
+          "cache_read": 214212,
+          "cache_write": 24952,
+          "cost_usd": 0.296002,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 2674,
+              "cache_read": 214212,
+              "cache_write": 24952,
+              "cost_usd": 0.296002
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 241854,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 0.6666666666666666,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": false,
+          "detail": "FAIL \u2014 The PM sent #11 back to the worker and did not merge it, but the material has the wrong target: the rubric is about sub-merging #11, and the material describes gating and merging PR #12 instead. It also omits any mention of the pre-patch test run, so the actual reasoning isn't in the material"
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 0,
+        "total": 1
+      },
+      "cost_usd": 0.34735840000000007,
+      "judge_cost_usd": 0.000826,
+      "usage": {
+        "input": 14,
+        "output": 2611,
+        "cache_read": 201692,
+        "cache_write": 31843
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2611,
+          "cacheReadInputTokens": 201692,
+          "cacheCreationInputTokens": 31843,
+          "webSearchRequests": 0,
+          "costUSD": 0.34735840000000007,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 524,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 31843,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 41.126,
+      "wall_s": 41.768,
+      "session_id": "fa70bb50-f6e5-425d-bbe1-eb9b8e848c9e",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "fa70bb50-f6e5-425d-bbe1-eb9b8e848c9e",
+            "turns": 7,
+            "input": 14,
+            "output": 2611,
+            "cache_read": 201692,
+            "cache_write": 31843,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.347358
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2611,
+          "cache_read": 201692,
+          "cache_write": 31843,
+          "cost_usd": 0.347358,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2611,
+              "cache_read": 201692,
+              "cache_write": 31843,
+              "cost_usd": 0.347358
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 236160,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge #11, named the `--json --verbose` criterion as unevidenced because \"implemented\" is its only evidence, and sent the work back to worker `w-11` with that criterion quoted."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2772486,
+      "judge_cost_usd": 0.000957,
+      "usage": {
+        "input": 14,
+        "output": 2239,
+        "cache_read": 179583,
+        "cache_write": 24562
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2239,
+          "cacheReadInputTokens": 179583,
+          "cacheCreationInputTokens": 24562,
+          "webSearchRequests": 0,
+          "costUSD": 0.2772486,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 500,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 24562,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 39.279,
+      "wall_s": 39.867,
+      "session_id": "4926eb70-0ffc-440f-a12f-28452c11faa0",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "4926eb70-0ffc-440f-a12f-28452c11faa0",
+            "turns": 7,
+            "input": 14,
+            "output": 2239,
+            "cache_read": 179583,
+            "cache_write": 24562,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.277249
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2239,
+          "cache_read": 179583,
+          "cache_write": 24562,
+          "cost_usd": 0.277249,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2239,
+              "cache_read": 179583,
+              "cache_write": 24562,
+              "cost_usd": 0.277249
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 206398,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge the PR for #11 (PR #12), named criterion 2 (`--json --verbose`) as unevidenced because \"implemented\" alone is not evidence, and sent the work back to the worker with that criterion quoted in the send-back message."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.26567240000000003,
+      "judge_cost_usd": 0.001085,
+      "usage": {
+        "input": 12,
+        "output": 2163,
+        "cache_read": 146902,
+        "cache_write": 24123
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 2163,
+          "cacheReadInputTokens": 146902,
+          "cacheCreationInputTokens": 24123,
+          "webSearchRequests": 0,
+          "costUSD": 0.26567240000000003,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 349,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 24123,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 35.05,
+      "wall_s": 35.617,
+      "session_id": "c2d67ca9-00a8-4116-aa01-f6dce44a53f1",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "c2d67ca9-00a8-4116-aa01-f6dce44a53f1",
+            "turns": 6,
+            "input": 12,
+            "output": 2163,
+            "cache_read": 146902,
+            "cache_write": 24123,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.265672
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 2163,
+          "cache_read": 146902,
+          "cache_write": 24123,
+          "cost_usd": 0.265672,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 2163,
+              "cache_read": 146902,
+              "cache_write": 24123,
+              "cost_usd": 0.265672
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 173200,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge, named the `--json --verbose` criterion as unevidenced because \"implemented\" is not evidence, and sent it back with the criterion quoted rather than waiving it."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.3100582,
+      "judge_cost_usd": 0.001029,
+      "usage": {
+        "input": 14,
+        "output": 2145,
+        "cache_read": 192791,
+        "cache_write": 28568
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2145,
+          "cacheReadInputTokens": 192791,
+          "cacheCreationInputTokens": 28568,
+          "webSearchRequests": 0,
+          "costUSD": 0.3100582,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 320,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 28568,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 35.604,
+      "wall_s": 36.246,
+      "session_id": "c74c8c85-6b52-4ec3-bbca-b9521301e75b",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "c74c8c85-6b52-4ec3-bbca-b9521301e75b",
+            "turns": 7,
+            "input": 14,
+            "output": 2145,
+            "cache_read": 192791,
+            "cache_write": 28568,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.310058
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2145,
+          "cache_read": 192791,
+          "cache_write": 28568,
+          "cost_usd": 0.310058,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2145,
+              "cache_read": 192791,
+              "cache_write": 28568,
+              "cost_usd": 0.310058
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 223518,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The comments on #41 and #42 both name the conflict (#41 \"gets `429`\" vs. #42 \"No request ever gets `429`\"), ask the maintainer which behavior is correct, and offer options without choosing one."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2981334,
+      "judge_cost_usd": 0.001038,
+      "usage": {
+        "input": 12,
+        "output": 2400,
+        "cache_read": 171067,
+        "cache_write": 26984
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 2400,
+          "cacheReadInputTokens": 171067,
+          "cacheCreationInputTokens": 26984,
+          "webSearchRequests": 0,
+          "costUSD": 0.2981334,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 472,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 26984,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 44.993,
+      "wall_s": 45.615,
+      "session_id": "abc5ca59-bca7-438b-a263-957247d41a0c",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "abc5ca59-bca7-438b-a263-957247d41a0c",
+            "turns": 6,
+            "input": 12,
+            "output": 2400,
+            "cache_read": 171067,
+            "cache_write": 26984,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.298133
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 2400,
+          "cache_read": 171067,
+          "cache_write": 26984,
+          "cost_usd": 0.298133,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 2400,
+              "cache_read": 171067,
+              "cache_write": 26984,
+              "cost_usd": 0.298133
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 200463,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The comments on #41 (`[9]`) and #42 (`[11]`) both name the 429-versus-queue contradiction, ask the maintainer which behavior is correct, and do not pick one, since the `[9]` option 3 example is framed as a possible rule rather than a decision."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.3001468,
+      "judge_cost_usd": 0.001307,
+      "usage": {
+        "input": 14,
+        "output": 2301,
+        "cache_read": 206994,
+        "cache_write": 26584
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2301,
+          "cacheReadInputTokens": 206994,
+          "cacheCreationInputTokens": 26584,
+          "webSearchRequests": 0,
+          "costUSD": 0.3001468,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 279,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 26584,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 44.282,
+      "wall_s": 44.904,
+      "session_id": "5494930a-e85f-4692-9371-f188be9a9726",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "5494930a-e85f-4692-9371-f188be9a9726",
+            "turns": 7,
+            "input": 14,
+            "output": 2301,
+            "cache_read": 206994,
+            "cache_write": 26584,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.300147
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2301,
+          "cache_read": 206994,
+          "cache_write": 26584,
+          "cost_usd": 0.300147,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2301,
+              "cache_read": 206994,
+              "cache_write": 26584,
+              "cost_usd": 0.300147
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 235893,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The comments on #41 and #42 both name the 429-versus-queue contradiction on `handle_excess()` and state that a maintainer must decide, without choosing either behavior."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2956592,
+      "judge_cost_usd": 0.001101,
+      "usage": {
+        "input": 10,
+        "output": 2265,
+        "cache_read": 138116,
+        "cache_write": 27837
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2265,
+          "cacheReadInputTokens": 138116,
+          "cacheCreationInputTokens": 27837,
+          "webSearchRequests": 0,
+          "costUSD": 0.2956592,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 367,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 27837,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 36.495,
+      "wall_s": 37.01,
+      "session_id": "a7d3d3fe-70c8-4f28-a62b-a3d32a6f1545",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "a7d3d3fe-70c8-4f28-a62b-a3d32a6f1545",
+            "turns": 5,
+            "input": 10,
+            "output": 2265,
+            "cache_read": 138116,
+            "cache_write": 27837,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.295659
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 2265,
+          "cache_read": 138116,
+          "cache_write": 27837,
+          "cost_usd": 0.295659,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2265,
+              "cache_read": 138116,
+              "cache_write": 27837,
+              "cost_usd": 0.295659
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 168228,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-triage",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific, targeted questions (which command gives the wrong output, the exact actual output versus expected output, and the input file that reproduces the problem), with concrete examples that would make the issue buildable, rather than a generic request for more de"
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2377142,
+      "judge_cost_usd": 0.000801,
+      "usage": {
+        "input": 12,
+        "output": 1295,
+        "cache_read": 147351,
+        "cache_write": 22787
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 1295,
+          "cacheReadInputTokens": 147351,
+          "cacheCreationInputTokens": 22787,
+          "webSearchRequests": 0,
+          "costUSD": 0.2377142,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 53,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 22787,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 28.135,
+      "wall_s": 28.706,
+      "session_id": "360a5ad6-5abd-4835-94e2-da4ee24cb686",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "360a5ad6-5abd-4835-94e2-da4ee24cb686",
+            "turns": 6,
+            "input": 12,
+            "output": 1295,
+            "cache_read": 147351,
+            "cache_write": 22787,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.237714
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 1295,
+          "cache_read": 147351,
+          "cache_write": 22787,
+          "cost_usd": 0.237714,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 1295,
+              "cache_read": 147351,
+              "cache_write": 22787,
+              "cost_usd": 0.237714
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 171445,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-triage",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks four specific questions: which command gives the wrong output, which input file triggers it, the actual versus expected output, and when it occurs. It gives concrete examples and asks for a small attached file, so it is not a generic request for more detail."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2324802,
+      "judge_cost_usd": 0.00085,
+      "usage": {
+        "input": 12,
+        "output": 1404,
+        "cache_read": 145441,
+        "cache_write": 21908
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 1404,
+          "cacheReadInputTokens": 145441,
+          "cacheCreationInputTokens": 21908,
+          "webSearchRequests": 0,
+          "costUSD": 0.2324802,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 63,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 21908,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 30.433,
+      "wall_s": 31.13,
+      "session_id": "e4c67c90-8cdc-4b65-9c69-088fb63dbcba",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "e4c67c90-8cdc-4b65-9c69-088fb63dbcba",
+            "turns": 6,
+            "input": 12,
+            "output": 1404,
+            "cache_read": 145441,
+            "cache_write": 21908,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.23248
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 1404,
+          "cache_read": 145441,
+          "cache_write": 21908,
+          "cost_usd": 0.23248,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 1404,
+              "cache_read": 145441,
+              "cache_write": 21908,
+              "cost_usd": 0.23248
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 168765,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-triage",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/111-worker-packet at 5291657: batch/115-token-speed plus the worker context packet)",
+        "git_sha": null,
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific, answerable questions: which command gives the wrong output, a sample input file, actual versus expected output, and whether the failure is consistent or intermittent, which together would make the issue buildable."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2912454,
+      "judge_cost_usd": 0.000758,
+      "usage": {
+        "input": 12,
+        "output": 1505,
+        "cache_read": 162887,
+        "cache_write": 28565
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 1505,
+          "cacheReadInputTokens": 162887,
+          "cacheCreationInputTokens": 28565,
+          "webSearchRequests": 0,
+          "costUSD": 0.2912454,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 75,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 28565,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 27.801,
+      "wall_s": 28.426,
+      "session_id": "6d302a1a-dc4b-4eca-b6c0-e0e2a12a1626",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "6d302a1a-dc4b-4eca-b6c0-e0e2a12a1626",
+            "turns": 6,
+            "input": 12,
+            "output": 1505,
+            "cache_read": 162887,
+            "cache_write": 28565,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.291245
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 1505,
+          "cache_read": 162887,
+          "cache_write": 28565,
+          "cost_usd": 0.291245,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 1505,
+              "cache_read": 162887,
+              "cache_write": 28565,
+              "cost_usd": 0.291245
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 192969,
+        "subagents": 0
+      }
+    }
+  ]
+}
