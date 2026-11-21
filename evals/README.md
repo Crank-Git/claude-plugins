@@ -549,7 +549,10 @@ python3 scripts/run-evals.py --plugin-dir issue-flow --suite worker --tag easy -
    work on the issue.
 2. The dispatcher spawns `issue-flow:issue-worker` with `isolation: "worktree"` and a
    standard handoff brief. The brief is standalone, with `ci: skip`, base `origin/main`,
-   remote `origin`, `tdd: true`, and `pluginRoot: {plugin_dir}`.
+   remote `origin`, `tdd: true`, and `pluginRoot: {plugin_dir}`. Since
+   Sniper7Kills-LLC/claude-plugins#111, the brief also has a context `packet`: the
+   `scope`, `readFirst`, `conflicts` and `test` fields that a PM writes from its locate
+   pass. The `scope` of a case is its `diff_scope` allowlist.
 3. The worker gets its model from `agents/issue-worker.md` of the plugin under test. Thus a
    change to the worker model is a change to the variant, not to the case.
 4. The worker reads the issue through the fake `gh`, commits on `issue/<n>-<slug>`, pushes
@@ -654,7 +657,9 @@ passes every case.
 1. Choose the issue and its tier. Write the acceptance criteria as observable results.
 2. Make `evals/worker/<name>/` with `case.json` and `tracker.json`. Copy both from a case
    of the same kind. Give the issue a number that no other case uses.
-3. Change the brief in the prompt: the issue number, the title and the branch slug.
+3. Change the brief in the prompt: the issue number, the title, the branch slug and the
+   `packet`. Write the packet as a PM would after a locate pass. Set `scope` to the
+   `diff_scope` allowlist, and name in `readFirst` the files that a correct change reads.
 4. Write `hidden/hidden_test_<slug>.py`. Test the acceptance criteria through the public
    interface (the command line, or the functions that the issue names). Do not test the
    way the reference solution works.

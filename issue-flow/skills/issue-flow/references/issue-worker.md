@@ -19,7 +19,7 @@ sub-merges. The PM is notified when each finishes — it does **not** sit and wa
 (Fallback if the type won't resolve: spawn `general-purpose` and prepend the brief with
 "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
-The worker is an **independent Opus engineer**: it may research (web), use available MCP
+The worker is an **independent Sonnet engineer**: it may research (web), use available MCP
 servers (via `ToolSearch`), and spawn its own child agents/Workflows — all on the
 **Sonnet** tier, all **confined to that issue's worktree** and its own scratch directory,
 and all finished before it returns its verdict. The PM sets none of this;
@@ -57,7 +57,15 @@ remote:       <remote>
 forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
               repo, interface}. The worker uses it to pick gh or tea. Never omit it; a worker
               that has to guess the forge is a worker that fails on its first tracker call.
-plan:         <the plan the PM already commented on the issue>
+plan:         <URL of the plan comment on the issue> — <the approach in one to three lines>
+              (the worker fetches the comment only when the packet does not answer a
+               question: the slice order, the named tests, the out-of-scope list)
+packet:       scope:     <the paths the change may touch: files and globs from the locate pass>
+              readFirst: <the files to read first, each with a few words on why>
+              conflicts: <from the cross-check: what a sibling owns, built, or changes in
+                          this scope; "none" when the check found nothing here;
+                          "n/a — standalone" when no check ran>
+              test:      <the command that runs the tests of the touched area>
 conventions:  <test cmd, lint cmd, merge style, repo specifics>
 practices:    tdd: true|false            (tests land with or before the implementation)
               ddd: true|false            (model the domain concepts the plan names)
@@ -77,6 +85,17 @@ so every `../references/…` link in its runbook — forge operations, the writi
 the finding policy — and the Gitea CI-watch script (`scripts/gitea-ci-watch.sh`) are
 reachable only through it. The PM knows the path: the harness shows the skill's base
 directory when the skill loads.
+
+`packet` is the worker's context, and the PM writes it from what it already knows. The
+locate pass (Stage B step 3) gives `scope` and `readFirst`. The cross-check comment (Stage B
+step 4) gives `conflicts`. The repo conventions give `test`. Keep the packet to about ten
+lines, with paths and commands, not prose. Without the packet, the worker fetches the plan
+comment and maps the code again. That is a second locate pass, paid with the worker's
+turns, for facts the PM had when it wrote the brief.
+
+The packet is a starting point, not a fence. When the change must touch a path outside
+`scope`, the worker touches it and says why in its PR body. Peers brief their workers the
+same way, from a compact file per task: ccpm task files, Bernstein tickets, BMAD stories.
 
 `crossCheck` is not optional on a multi-member batch: it is the field that makes the step-4
 gate un-skippable, because you cannot fill it in before the comment exists. A worker that

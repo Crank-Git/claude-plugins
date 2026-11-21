@@ -485,7 +485,10 @@
       "id": "rule-B-dc78a2fa",
       "text": "Pass only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, **`members` = the batch's member count** — it is how the worker knows whether `crossCheck` may legally be `n/a` — remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained.",
       "phase": "B",
-      "source_line": 598
+      "source_line": 598,
+      "aliases": [
+        "Pass only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, **`members` = the batch's member count** — it is how the worker knows whether `crossCheck` may legally be `n/a` — remote, the **URL of the plan you commented** with the approach in one to three lines, the **context `packet`** — `scope`, `readFirst` and `test` from the locate pass (step 3), and `conflicts` from the cross-check comment (step 4): what a sibling owns, built or changes in this member's scope, or `none` — conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained."
+      ]
     },
     {
       "id": "rule-B-20ee130f",

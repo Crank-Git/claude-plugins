@@ -32,6 +32,12 @@
      worker is expected to add, and out-of-scope. The slice order is what makes a
      mid-issue checkpoint hand over working behaviour instead of a half-built layer, and
      the named tests are what the C1 gate's pre-patch check verifies.
+   - **Keep what the locate pass found, for the worker's packet.** Ask each locate agent
+     for three things in its summary: the paths the change touches, the files a worker
+     must read first (with a few words on why), and the test files and test command for
+     that area. These become the `scope`, `readFirst` and `test` fields of the brief's
+     `packet` (step 5). Write them down now. The worker cannot see your context, and
+     without them it maps the same code again with its own turns.
    - **Claim with compare-and-set:** immediately before claiming, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else `forge.issue.assign`, then `forge.issue.status.set <n> status:in-progress`. **On a multi-member batch, assign every member here but hold the status swap** until each one actually launches (step 5) — step 4 forbids `status:in-progress` before the cross-check comment exists, and the assignee is what holds the claim in the meantime (assignee = lock; on Gitea resolve your login with `forge.user.login` first — `tea` has no `@me`).
    - If planning surfaces a user-only decision, don't guess: comment the question, `forge.issue.status.set <n> status:needs-feedback` (removes whichever single `status:` label the issue is carrying — `status:in-progress` if the claim already swapped it, none if it has not), drop the claim, pick different work.
 4. **Cross-check the batch's plans — a gate, before the batch's first launch.**
@@ -115,7 +121,7 @@
    already being built. Measured failing in a live run even with an explicit
    "check the comment exists first" instruction here, which is why it is now a field rather
    than a reminder. Launch with `Agent`,
-   `subagent_type: "issue-flow:issue-worker"`, **`isolation: "worktree"`** (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it), and **record the `agentId` the spawn result returns** — `SendMessage` to that id is how you reach the worker for rework, corrections and pushed findings. Pass `name: "worker-<issue>"` as well only when the `Agent` tool offers a `name` parameter: it exists only with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (measured on 2.1.285), so address by `agentId` either way. Pass only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, **`members` = the batch's member count** — it is how the worker knows whether `crossCheck` may legally be `n/a` — remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](issue-worker.md).
+   `subagent_type: "issue-flow:issue-worker"`, **`isolation: "worktree"`** (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it), and **record the `agentId` the spawn result returns** — `SendMessage` to that id is how you reach the worker for rework, corrections and pushed findings. Pass `name: "worker-<issue>"` as well only when the `Agent` tool offers a `name` parameter: it exists only with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (measured on 2.1.285), so address by `agentId` either way. Pass only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, **`members` = the batch's member count** — it is how the worker knows whether `crossCheck` may legally be `n/a` — remote, the **URL of the plan you commented** with the approach in one to three lines, the **context `packet`** — `scope`, `readFirst` and `test` from the locate pass (step 3), and `conflicts` from the cross-check comment (step 4): what a sibling owns, built or changes in this member's scope, or `none` — conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](issue-worker.md).
 
    **Never dispatch a build with `subagent_type: "fork"`.** A fork inherits this entire
    session verbatim — the full PM/autonomous-loop instructions, not just the one issue's
@@ -131,6 +137,12 @@
    **As each member actually launches, complete its held claim**: `forge.issue.status.set <n> status:in-progress` (removes `status:ready`), and comment `worker launched: <agentId>` on the issue — the id is session-local, for this session's rework and for humans reading along; a later session never messages it (Phase 0 step 12). This is the swap step 3 deferred, and nothing else performs it. An issue left on `status:ready` while its worker runs re-enters the ready pool at the next triage and can be scheduled twice; the assignee alone does not stop *you*, because the claim CAS only abandons issues assigned to someone **else**.
 
    Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
+
+   **Do not paste the whole plan into the brief.** The packet carries what the worker
+   needs first, and the plan URL carries the rest. The worker reads the packet first, and
+   fetches the plan comment only when the packet does not answer a question. Copy each
+   `conflicts` line from the cross-check comment for this member. Do not summarize the
+   whole comment: the worker still reads it in full as its First action.
 
    **The brief carries `pluginRoot`**, the plugin's absolute directory: two levels above
    this skill's base directory, which the harness shows when the skill loads. A worker
