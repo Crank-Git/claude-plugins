@@ -3,6 +3,7 @@
   "suite": "worker",
   "tags": [
     "worker",
+    "small",
     "easy"
   ],
   "timeout_s": 1800,
