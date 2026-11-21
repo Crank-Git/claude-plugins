@@ -119,7 +119,7 @@
     {
       "number": 51,
       "title": "Add a --json flag to `widgets count`",
-      "body": "`widgets count` prints a plain number. Scripts need a machine-readable form.\n\nPart of #50\n\n## Acceptance criteria\n- [ ] `widgets count --json` prints `{\"count\": N}` and exits 0\n- [ ] Without `--json`, the output does not change\n",
+      "body": "`widgets count` prints a plain number. Scripts need a machine-readable form.\n\nPart of #50\n\n## Acceptance criteria\n- [ ] `widgets count --json` prints `{\"count\": N}` and exits 0\n- [ ] `widgets count --json` on an empty stock file prints `{\"count\": 0}`\n",
       "state": "open",
       "labels": [
         "status:in-review"
@@ -134,7 +134,7 @@
         {
           "id": 5101,
           "author": "eval-bot",
-          "body": "## Plan (PM)\n\nAdd `--json` to the `count` subcommand in `widgets.py`. Tests in `test_widgets.py`, written first: `test_count_json_prints_object`. The existing `test_counts_non_empty_lines` guards the plain output. Document the flag in `README.md`.",
+          "body": "## Plan (PM)\n\nAdd `--json` to the `count` subcommand in `widgets.py`. Tests in `test_widgets.py`, written first: `test_count_json_prints_object`, `test_count_json_empty_file`. Document the flag in `README.md`.",
           "createdAt": "2026-11-20T09:00:00Z"
         },
         {

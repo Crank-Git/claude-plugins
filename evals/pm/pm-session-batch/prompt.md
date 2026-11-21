@@ -18,7 +18,7 @@ The worker for #51 (agentId `w-51`) sent this final verdict:
   "prNumber": 53,
   "outcome": "ready-to-merge",
   "detail": "--json added to widgets count; README documents it; tests green",
-  "localChecks": "python3 -m unittest: 16 passed; pre-patch: 1 new test fails as expected (test_count_json_prints_object); tests written first (commit a1b2c3d before b2c3d4e); docs: README.md documents --json; commits follow the conventional style",
+  "localChecks": "python3 -m unittest: 16 passed; pre-patch: 2 new tests fail as expected (test_count_json_prints_object, test_count_json_empty_file); tests written first (commit a1b2c3d before b2c3d4e); docs: README.md documents --json; commits follow the conventional style",
   "criteria": [
     {
       "text": "`widgets count --json` prints `{\"count\": N}` and exits 0",
@@ -26,9 +26,9 @@ The worker for #51 (agentId `w-51`) sent this final verdict:
       "evidence": "test_widgets.py::test_count_json_prints_object passes"
     },
     {
-      "text": "Without `--json`, the output does not change",
+      "text": "`widgets count --json` on an empty stock file prints `{\"count\": 0}`",
       "met": true,
-      "evidence": "test_widgets.py::test_counts_non_empty_lines (an existing test of the plain output) still passes"
+      "evidence": "test_widgets.py::test_count_json_empty_file passes"
     }
   ],
   "openThreads": 0,
