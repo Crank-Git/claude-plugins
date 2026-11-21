@@ -567,6 +567,58 @@ The first 3 runs of `pm-triage` failed because of a grader error, not a PM error
 start of the arguments only, and `body` still matches line by line. `pm-triage` then ran
 3 more times. `superseded-pm-triage.json` keeps the first 3 runs.
 
+## Session-level PM cases
+
+A single-decision PM case gives the PM one stage and stops. It cannot show what a change
+does over a long session: fewer re-reads, a tracker read in one pass, or less context
+growth from sweep to sweep. A session-level case runs one PM through several stages in
+order, against one tracker, so those effects add up in one run
+(Sniper7Kills-LLC/claude-plugins#116).
+
+Use a session-level case when the change that you measure pays off across stages, for
+example a change to how the PM reads the tracker, or to what it keeps in context between
+sweeps. Use the single-decision cases to test one rule. A session-level run costs about
+2.5 times as much as a single-decision run ($1.16 against $0.48 on 0.20.0), and its token count varies more from run to run.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm --tag session --runs 3 --max-cost-usd 25
+```
+
+A session-level case carries the tag `session`. It is in the `pm` suite, so a full
+`--suite pm` run includes it.
+
+### `pm-session-batch`
+
+The prompt is in `evals/pm/pm-session-batch/prompt.md`. The PM does four steps:
+
+1. The Stage A0 sweep and the Stage A triage. The tracker holds 8 backlog issues: 3 clear
+   issues, 2 unclear issues, an epic without sub-issues, an issue with two `status:`
+   labels, and an issue that is already ready.
+2. Stage B step 1 and the plan comments (step 3, plan only): the PM forms batches from the
+   ready pool and plans each member. It claims and launches nothing.
+3. The Stage C1 gate on two given verdicts of the in-flight batch #50: #51 is good and
+   sub-merges, and #52 has a criterion with "implemented" as its evidence, so it goes back
+   to the worker.
+4. A second Stage A0 sweep and Stage A triage. The tracker `events` (see the schema
+   above) add a maintainer's answer to #63 when the PM merges #51's PR. The second sweep
+   must find that answer and make #63 ready.
+
+The deterministic graders read the gh log. They check the triage labels and comments,
+the epic decomposition, the split-status repair, a `type:batch` tracking issue, a plan
+comment on each loose ready issue, the squash merge with `[skip ci]`, the `status:batched`
+swap on #51, and #63 made ready after the merge. They forbid any claim, launch or merge
+of #52. A `file` grader reads the send-back message for #52. The `llm` grader judges the
+plans and the triage questions.
+
+In this test, `gh pr merge` changes only the tracker, and the remote holds no commits of
+the workers. The prompt tells the PM so, and tells it to skip the C1 step 4b check of the
+landed message.
+
+`evals/BASELINE.md` ("PM session case") gives the numbers on 0.20.0 and on the batch #115
+head. Use `tracker_calls` (see "Make a baseline") for the tracker calls of a run. In
+each of the 6 measured runs, Claude Code itself called `gh pr view <branch> --json url`
+12 times, and the fake refused each call. These calls count as `error` lines.
+
 ## The worker suite
 
 The worker suite measures the `issue-worker` agent on fixed issues. Each case gives one
