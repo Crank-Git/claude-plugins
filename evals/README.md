@@ -327,6 +327,19 @@ the `GRADERS` table in `scripts/run-evals.py`.
 - Labels are names. An `issue edit` that adds a label not in `labels` fails, as on GitHub.
 - Issues and PRs share one number sequence. A new item gets the highest number plus 1.
 - A new comment gets the highest comment id plus 1.
+- `events` is optional. Each event adds a comment to the tracker after a call, as a person
+  would during a session. A later sweep can then find something new:
+
+  ```json
+  "events": [{"after": {"cmd": "pr merge", "args": "^53\\b"},
+              "comment": {"issue": 63, "author": "maintainer", "body": "Answer: ..."}}]
+  ```
+
+  The event fires once, after the first successful call whose `cmd` is equal to `after.cmd`
+  and whose arguments match the `after.args` regular expression. Without `args`, any
+  arguments match. The comment updates the issue's `updatedAt`. The fake then sets
+  `"fired": true` on the event. An event adds no line to the log. A refused call fires no
+  event.
 
 ## The fake `gh`
 
@@ -347,6 +360,9 @@ line comments on a diff, so `pulls/<n>/comments` always returns `[]`.
 `--jq` needs `jq` on `PATH`. `--search` is accepted but does not filter, so a search
 returns more items than GitHub would, never fewer. Any other subcommand, and any `api`
 call that writes, exits 1 with a message that names the fake.
+
+After a successful call, the fake fires the tracker `events` that the call triggers (see
+the schema above).
 
 Each call adds one line to `gh-log.jsonl`:
 
@@ -436,7 +452,7 @@ python3 scripts/eval-baseline.py evals/results/<stamp> --out evals/baselines/<ve
     --label "issue-flow (git worktree of tag issue-flow--v<version>)"
 ```
 
-The script changes each record in three ways:
+The script changes each record in these ways:
 
 - `agents` is the output of `issue-flow/scripts/usage.py --json` for the session: the
   tokens, the turns and the estimated cost of each agent.
@@ -447,8 +463,13 @@ The script changes each record in three ways:
 
 - A record with no `effort` takes the `effort` of `results.json`.
 
-It also writes `summary.json`. The exit code is 1 when a run has no transcript. Then that
-record has `agents: null`.
+- `tracker_calls` is `{total, read, write, error}`, the count of the lines in the run's
+  `gh-log.jsonl`. A run with no log gets `null`. The count is information only: no decision
+  rule reads it. Every PM run starts with 3 reads from the SessionStart preflight hook
+  (`label list`, `pr list` and `issue list`), so the lowest count is 3.
+
+It also writes `summary.json`, with `mean_tracker_calls` for each case. The exit code is 1
+when a run has no transcript. Then that record has `agents: null`.
 
 Before it writes, the script scans the whole output for a local path: `/Users/`,
 `/home/`, `/private/` or `/var/folders/`. When it finds one, it names the field, writes
@@ -765,7 +786,8 @@ with a golden PM, which must pass. Add a golden run to the test when you add a c
 1. Make `evals/<suite>/<name>/` with `case.json` and `tracker.json`.
 2. Give the case one decision to test. The prompt names the situation and the stage, and
    it says what to do instead of an action the sandbox cannot do, for example a worker
-   launch.
+   launch. A session-level case is the exception: it tests a sequence of stages (see
+   "Session-level PM cases").
 3. Give it at least one deterministic grader that fails when the agent does nothing.
 4. For a PM case, add its golden run to `GOLDEN` in `scripts/test-run-evals.py`. For a
    worker case, follow "Add a worker case" above.
