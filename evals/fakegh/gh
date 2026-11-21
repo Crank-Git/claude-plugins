@@ -398,9 +398,8 @@ def pr_list(tracker, positionals, flags):
 
 
 def pr_view(tracker, positionals, flags):
-    if not positionals:
-        raise Refused("pr view needs a number or a branch")
-    item = tracker.find_pr(positionals[0])
+    # Without an argument, gh shows the PR of the current branch.
+    item = tracker.find_pr(positionals[0] if positionals else current_branch())
     record = tracker.item_json(item, "prs")
     if "--json" in flags:
         record = select_fields(record, one(flags, "--json"), PR_FIELDS)

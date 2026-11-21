@@ -544,6 +544,8 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
         "model_usage": result.get("modelUsage") or {},
         "turns": result.get("num_turns"),
         "duration_s": round(result["duration_ms"] / 1000, 3) if result.get("duration_ms") else round(wall, 3),
+        # duration_ms stops when the main loop ends; a background subagent can run past it.
+        "wall_s": round(wall, 3),
         "session_id": result.get("session_id"),
         "transcript": find_transcript(result.get("session_id")),
         "model": main_model(result, model),

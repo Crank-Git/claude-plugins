@@ -355,6 +355,14 @@ def test_fake_gh_worker_subcommands():
               f"pr edit changes the title, the body and the labels, got {pr}")
         result = gh("pr", "edit", "issue/1-x", "--body", "by branch")
         check(result.returncode == 0, f"pr edit finds a PR by its head branch, got {result.stderr}")
+        branch_repo = os.path.join(work, "clone")
+        os.makedirs(branch_repo)
+        git(branch_repo, "init", "-q", "-b", "issue/1-x")
+        git(branch_repo, "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "work")
+        viewed = subprocess.run([sys.executable, fake, "pr", "view", "--json", "number"], capture_output=True,
+                                text=True, env=env, cwd=branch_repo)
+        check(viewed.returncode == 0 and json.loads(viewed.stdout or "{}").get("number") == 9,
+              f"pr view without a number shows the PR of the current branch, got {viewed.stdout!r} {viewed.stderr!r}")
         result = gh("api", "repos/{owner}/{repo}/pulls/9/comments")
         check(result.returncode == 0 and json.loads(result.stdout or "null") == [],
               f"api reads the review comments of a PR, got {result.stdout!r} {result.stderr!r}")
@@ -363,7 +371,7 @@ def test_fake_gh_worker_subcommands():
               f"api reads the reviews of a PR, got {result.stdout!r} {result.stderr!r}")
         with open(os.path.join(work, "gh-log.jsonl")) as handle:
             log = [json.loads(line) for line in handle]
-        check([e["kind"] for e in log] == ["write", "write", "read", "read"],
+        check([e["kind"] for e in log] == ["write", "write", "read", "read", "read"],
               f"the log records pr edit as a write and the api reads as reads, got {log}")
         check(log[0].get("body") == "new", f"the log keeps the body of pr edit, got {log[0]}")
     finally:
@@ -454,6 +462,8 @@ def test_golden_worker_passes_every_case():
         if records:
             check(records[0]["model_usage"] and records[0]["cost_usd"] == 0.25,
                   f"{case['name']}: the record keeps the cost and the per-model usage")
+            check(isinstance(records[0].get("wall_s"), float) and records[0]["wall_s"] > 0,
+                  f"{case['name']}: the record has the wall time, got {records[0].get('wall_s')}")
 
 
 for test in (test_suite_shape, test_fixture_tests_pass, test_reference_check, test_path_allowed,

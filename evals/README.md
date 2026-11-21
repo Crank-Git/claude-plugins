@@ -249,6 +249,7 @@ partial, records}`. Each record:
 | `model_usage` | The result's `modelUsage`, unchanged: tokens and cost per model. |
 | `turns` | `num_turns` from the result. |
 | `duration_s` | `duration_ms` from the result, in seconds. |
+| `wall_s` | The wall time of the `claude -p` process, in seconds. A worker case needs it, because `duration_ms` stops at the end of the main loop and does not include a background subagent. In the first live worker run, `duration_s` was 5.3 s and `duration_api_ms` was 84 s. |
 | `session_id` | The session id. The transcript is `~/.claude/projects/<project>/<session_id>.jsonl`, and subagent transcripts are in `<session_id>/subagents/`. |
 | `transcript` | The transcript path, when the runner found it. |
 | `model` | The model asked for, or else the model with the highest cost in `modelUsage`. |
@@ -335,7 +336,8 @@ python3 scripts/run-evals.py --plugin-dir issue-flow --suite worker --tag easy -
 5. The dispatcher writes the worker's verdict to `.eval/verdict.json` in the sandbox repo.
 6. The runner grades the run. Then it removes the sandbox, with the worker's worktree in it.
 
-The record keeps `cost_usd`, which includes the worker. `model_usage` gives the tokens and
+The record keeps `cost_usd`, which includes the worker. Use `wall_s` for the duration of a
+worker case, not `duration_s`. `model_usage` gives the tokens and
 the cost per model, so the worker's share is the entry of its model. `usage` counts only the
 dispatcher.
 
