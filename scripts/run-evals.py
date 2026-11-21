@@ -364,7 +364,7 @@ OUTCOMES = {"ready-to-merge", "checkpoint", "needs-feedback", "blocked"}
 HIDDEN_COMMAND = [sys.executable, "-m", "unittest", "discover", "-s", ".", "-p", "hidden_test*.py"]
 # The words that name the pre-patch run. issue-worker.md gives no fixed field for it, so
 # workers say it in their own words ("failed before the fix" in #111's candidate).
-PREPATCH_RUN = (r"(?i)\bpre-?(patch|fix|change)\b|\bunpatched\b"
+PREPATCH_RUN = (r"(?i)\bpre-?(patch|fix|change)|\bunpatched\b"
                 r"|\b(before|without) (the|my|this|any) (fix|change|patch|implementation)\b")
 
 

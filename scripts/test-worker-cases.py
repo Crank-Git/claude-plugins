@@ -357,6 +357,7 @@ PREPATCH_WORDINGS = (
     "the new tests fail without the change (ImportError on parse_price)",
     "on the pre-fix code the 2 new tests failed",
     "the new tests failed on the unpatched code",
+    "2 new tests fail on the pre-patched code",
 )
 # localChecks texts that do not report a failing pre-patch run.
 NO_PREPATCH = (
