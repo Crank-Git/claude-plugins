@@ -43,6 +43,9 @@ jobs:
       - name: Test the preflight hook
         run: python3 scripts/test-preflight.py
 
+      - name: Test the trim hook and the test filter
+        run: python3 scripts/test-trim-test-output.py
+
       - name: Test the spec renderer
         run: python3 scripts/test-render-spec.py
 

@@ -458,6 +458,26 @@ Optional:
   its hook rewrites shell commands transparently and filters token-heavy output for the
   PM and every worker. The loop checks for it once at preflight and leaves it in place.
 
+For an operator without `rtk`, the plugin's own `PreToolUse` hook
+(`hooks/trim-test-output.py`) trims the output of test commands:
+
+- It sends a recognized test command through `scripts/test-filter.py`. The recognized
+  commands are `python3 -m unittest`, `pytest`, `python3 -m pytest`, `npm test`,
+  `npm run test`, `go test` and `cargo test`.
+- The filter drops the passing-test lines. It keeps the failures, the summary, and the
+  last 20 lines when the command fails. The exit code does not change.
+- The hook acts only in the `bypassPermissions` permission mode. In another mode, the
+  changed command can miss your allow rules, and a background worker cannot answer the
+  prompt.
+- The hook leaves a command with a pipe or a redirection unchanged.
+- When `rtk` is also installed, both hooks can change the same test command. The Claude
+  Code documentation does not say which change applies. If you use `rtk`, turn this hook
+  off.
+- To see every line of one command, put `ISSUE_FLOW_TRIM=off` before it. To turn the
+  hook off, put `"env": {"ISSUE_FLOW_TRIM": "off"}` in `.claude/settings.json`. Claude
+  Code reads the environment at session start, so an `export` from a tool call does
+  nothing.
+
 Connect a browser MCP server once, at user scope:
 
 ```bash

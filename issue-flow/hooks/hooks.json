@@ -20,6 +20,16 @@
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-spawn.py\""
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/trim-test-output.py\"",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }
