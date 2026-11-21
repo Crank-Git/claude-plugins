@@ -375,8 +375,31 @@ def test_effort():
             check(f"the 0.20.0 {suite} {name} records effort medium", effort == "medium", effort)
 
 
+def test_tracker_calls_info():
+    print("tracker calls (information only)")
+    base_records = [pm_record(case, run) for case in PM_CASES for run in (1, 2, 3)]
+    cand_records = [dict(pm_record(case, run, tokens=800), tracker_calls={"total": 4, "read": 1, "write": 3, "error": 0})
+                    for case in PM_CASES for run in (1, 2, 3)]
+    base = write_results("calls-base", "pm", base_records)
+    cand = write_results("calls-cand", "pm", cand_records)
+    code, report = compare(base, cand)
+    row = report.get("cases", {}).get("pm-a", {})
+    check("a case row carries the mean tracker calls", row.get("candidate", {}).get("mean_tracker_calls") == 4.0
+          and row.get("baseline", {}).get("mean_tracker_calls") is None, row)
+    check("the tracker calls do not change the verdict", code == 0 and report.get("verdict") == "ship",
+          (code, report.get("verdict")))
+    check("no check is named for tracker calls", not any("tracker" in c["name"] for c in report.get("checks", [])),
+          report.get("checks"))
+    code, text = text_compare(base, cand)
+    check("the text report shows tracker calls b/c", "tracker calls per run b/c" in text and "n/a/4.0" in text, text)
+    plain = write_results("calls-plain", "pm", [pm_record(case, run, tokens=800) for case in PM_CASES for run in (1, 2, 3)])
+    code, text = text_compare(base, plain)
+    check("the text report leaves the line out when neither side has a count", "tracker calls" not in text, text)
+
+
 EVALS = make_evals_dir()
 try:
+    test_tracker_calls_info()
     test_pm_rule()
     test_worker_rule()
     test_no_result_runs()

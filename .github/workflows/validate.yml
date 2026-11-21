@@ -79,5 +79,8 @@ jobs:
       - name: Test the baseline preparation script
         run: python3 scripts/test-eval-baseline.py
 
+      - name: Test the tracker-state script and the fake gh GraphQL read
+        run: python3 scripts/test-tracker-state.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py

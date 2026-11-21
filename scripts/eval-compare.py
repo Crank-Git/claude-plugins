@@ -166,7 +166,15 @@ def case_row(records):
         "cost_spread": spread(costs(records)),
         "no_result_runs": sum(not has_result(r) for r in records),
         "mean_main_tokens": round(mean(tokens(r) for r in records)),
+        "mean_tracker_calls": tracker_calls(records),
     }
+
+
+def tracker_calls(records):
+    """The mean fake-gh calls per run, or None when no record has the count. No rule reads it."""
+    counts = [(r.get("tracker_calls") or {}).get("total") for r in records]
+    counts = [count for count in counts if count is not None]
+    return round(mean(counts), 2) if counts else None
 
 
 def case_tags(evals_dir, suite, case):
@@ -373,6 +381,13 @@ def render(report):
             f"{b['mean_main_tokens']:>9}/{c['mean_main_tokens']:<9}")
         lines.append(f"{'':34} run-to-run range: score b {span(b['score_spread'])}, c {span(c['score_spread'])}; "
                      f"cost b {span(b['cost_spread'], '$')}, c {span(c['cost_spread'], '$')}")
+    calls = [(case, row["baseline"].get("mean_tracker_calls"), row["candidate"].get("mean_tracker_calls"))
+             for case, row in report["cases"].items()]
+    if any(b is not None or c is not None for _, b, c in calls):
+        lines.append("")
+        lines.append("tracker calls per run b/c (information only, from each run's gh log):")
+        for case, b, c in calls:
+            lines.append(f"  {case:32} {'n/a' if b is None else b}/{'n/a' if c is None else c}")
     lines.append("")
     for check in report["checks"]:
         values = {k: v for k, v in check.items() if k not in ("name", "passed")}

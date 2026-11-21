@@ -5,10 +5,20 @@ another person may be running their own issue-flow session on this repo. Before 
 read what they did since `LAST_SWEEP`. Full playbook —
 [references/collaboration.md](collaboration.md).
 
-1. **Find what moved.** `forge.issue.list.since <LAST_SWEEP>` and
-   `forge.pr.list.since <LAST_SWEEP>`; fetch comments **only**
-   for those numbers (delegate long threads to a subagent). Refresh `LAST_SWEEP` and keep
-   it in your status-issue block.
+1. **Find what moved, in one read.** Run the tracker-state script. It is at
+   `../../scripts/tracker-state.py` from the base directory of this skill. On Gitea, add
+   `--forge gitea`.
+   ```bash
+   python3 <skill base directory>/../../scripts/tracker-state.py --since <LAST_SWEEP>
+   ```
+   One JSON holds every open issue and PR with its labels and assignees, the comments
+   made since `LAST_SWEEP`, the items closed or merged since then (`closedSince`), the
+   `untriaged` numbers with their bodies, and the step 3b repairs (`splitStatus`). It
+   replaces `forge.issue.list.since`, `forge.pr.list.since` and one `forge.issue.view` per
+   item ([forge.md](../../../references/forge.md), `forge.state.read`). If an item has
+   `commentsTruncated: true`, read that thread with `forge.issue.view` (delegate long
+   threads to a subagent). If no `LAST_SWEEP` exists yet, run the script without
+   `--since`. Refresh `LAST_SWEEP` and keep it in your status-issue block.
 2. **Apply what humans said.** Answers to parked questions → record, apply, clear
    `status:needs-feedback`. New instructions or scope changes on an issue → authoritative,
    update and re-triage; if one contradicts the spec, say so and ask which wins. PR
@@ -46,7 +56,8 @@ read what they did since `LAST_SWEEP`. Full playbook —
    diagnosis** — it exists because the C1 gate has been measured leaving `in-review` behind
    when it adds `batched`, across three separate runs, while reporting in its own comment that
    the issue is `status:batched`. A gate that believes it did the swap cannot catch itself, so
-   the sweep catches it instead.
+   the sweep catches it instead. The script's `splitStatus` already applies this order:
+   each entry names the label to `keep` and the labels to `remove`.
 4. **Respect other operators.** Never take an issue assigned to another login, never edit
    another operator's `flow:status` issue, never open a competing integration branch for
    an epic someone else is running.
@@ -71,7 +82,9 @@ state, apply its label, and schedule the next issue already in the ready pool. T
 is the source of truth and it is not going anywhere; re-deriving the whole queue after
 every single verdict buys nothing and costs a full-context pass each time.
 
-1. `forge.issue.list` and triage:
+1. Read the state with the tracker-state script (Stage A0 step 1) and triage. If the sweep
+   just ran, use its output again. An untriaged issue carries its `body` and its whole
+   thread, so it needs no `forge.issue.view`.
    - **Skip** `status:blocked` / `status:needs-feedback` (but re-check, step 4) and `flow:status`.
    - **Prefer** `status:ready`; among those `priority:high` first, then oldest.
    - **Untriaged** (no status label): read it. Clear and actionable → `status:ready`. Unclear → `status:needs-feedback` + comment the specific questions.
@@ -100,6 +113,21 @@ every single verdict buys nothing and costs a full-context pass each time.
      `status:needs-feedback`. **Deferred** → leave the label; don't re-ask this session
      unless it materially changes.
 5. If nothing is workable, post a final digest (Stage E reporting) with the open questions and stop the loop.
+
+## Tracker writes (Stage A0 and Stage A)
+
+GitHub allows 80 content-creating requests a minute and 500 an hour, and it tells clients
+to send writes one at a time ([forge.md](../../../references/forge.md), "Tracker reads and
+writes"). Thus make each write do all of its work:
+
+- A status change is one `forge.issue.status.set` call. It adds the new label and removes
+  the old label.
+- Write one comment per issue in a pass. Put the reason, the questions and the repair
+  note in that one comment.
+- If several issues take the same label change, give all their numbers to one
+  `forge.issue.status.set` call: `gh issue edit <n> <m> …` and `tea issues edit <n> <m> …`
+  both take a list.
+- Send the writes one after the other in one shell call, never as parallel calls.
 
 ## The filing gate (binds every issue *you* create)
 

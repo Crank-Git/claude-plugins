@@ -14,8 +14,9 @@ The output is one JSON object on stdout:
   `commentsTruncated`. An untriaged issue (no `status:` label) also has `body`.
 - `prs`: every open pull request, with `isDraft`, `baseRefName`, `headRefName` and
   `mergeable` in place of `body`.
-- `comments` on an item: with `--since`, the comments made at or after that time.
-  Without `--since`, the comments of untriaged issues only.
+- `comments` on an item: an untriaged issue has its whole thread (on GitHub, the
+  newest 20 comments). Any other item has the comments made at or after `--since`,
+  and none without `--since`.
 - `commentsTruncated`: true when the read did not reach every comment that the
   rule above asks for. Then read that thread with `forge.issue.view`.
 - `closedSince`: with `--since`, the issues and PRs closed or merged after it.
@@ -123,12 +124,12 @@ def split_entry(item):
 
 def finish(item, fetched, total, since, untriaged):
     """Apply the comment rule of the module docstring to one item."""
-    if since is not None:
+    if untriaged:
+        kept, truncated = fetched, total > len(fetched)
+    elif since is not None:
         kept = [c for c in fetched if at_or_after(c["createdAt"], since)]
         # Only the newest comments are fetched, so an older one after --since can be missing.
         truncated = total > len(fetched) and (not fetched or at_or_after(fetched[0]["createdAt"], since))
-    elif untriaged:
-        kept, truncated = fetched, total > len(fetched)
     else:
         kept, truncated = [], False
     item.update(comments=kept, commentCount=total, commentsTruncated=truncated)
@@ -289,6 +290,9 @@ def read_gitea(run, since=None, repo=None):
     by_number = {item["number"]: item for item in issues + prs}
     for item in by_number.values():
         item.update(comments=[], commentsTruncated=False)
+    for item in issues:
+        if not item["status"] and item["commentCount"]:
+            item["comments"] = [gitea_comment(r) for r in pages(f"issues/{item['number']}/comments")]
     closed = []
     if since:
         stamp = urllib.parse.quote(since, safe="")
@@ -299,12 +303,9 @@ def read_gitea(run, since=None, repo=None):
                            "title": record["title"], "updatedAt": record.get("updated_at", "")})
         for record in pages(f"issues/comments?since={stamp}"):
             item = by_number.get(comment_number(record))
-            if item is not None:
+            # An untriaged issue already holds its whole thread.
+            if item is not None and "body" not in item:
                 item["comments"].append(gitea_comment(record))
-    else:
-        for item in issues:
-            if not item["status"] and item["commentCount"]:
-                item["comments"] = [gitea_comment(r) for r in pages(f"issues/{item['number']}/comments")]
     return summarize(issues, prs, closed, calls, since_time, "gitea")
 
 

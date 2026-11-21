@@ -327,13 +327,17 @@ supports these subcommands, with the `--json`, `--jq` and filter flags the PM us
 - `api` GET reads: `user`, `repos/{owner}/{repo}`, `.../issues`, `.../issues/<n>`,
   `.../issues/<n>/comments`, `.../issues/comments/<id>`, `.../pulls`, `.../pulls/<n>`,
   `.../pulls/<n>/comments`, `.../pulls/<n>/reviews`, `.../labels`
+- `api graphql` for the `TrackerState` query of `issue-flow/scripts/tracker-state.py`,
+  and no other query. The fake does not parse GraphQL: it knows the query by its name,
+  and it returns every item on one page. A call of the script adds one `api` line to the
+  log.
 
 `pr edit` changes the title, the body, the base and the labels of a PR. The tracker holds no
 line comments on a diff, so `pulls/<n>/comments` always returns `[]`.
 
 `--jq` needs `jq` on `PATH`. `--search` is accepted but does not filter, so a search
 returns more items than GitHub would, never fewer. Any other subcommand, and any `api`
-call that writes, exits 1 with a message that names the fake.
+call that writes, exits 1 with a message that names the fake. A GraphQL mutation exits 1 too.
 
 Each call adds one line to `gh-log.jsonl`:
 
@@ -423,7 +427,7 @@ python3 scripts/eval-baseline.py evals/results/<stamp> --out evals/baselines/<ve
     --label "issue-flow (git worktree of tag issue-flow--v<version>)"
 ```
 
-The script changes each record in three ways:
+The script changes each record in these ways:
 
 - `agents` is the output of `issue-flow/scripts/usage.py --json` for the session: the
   tokens, the turns and the estimated cost of each agent.
@@ -431,8 +435,11 @@ The script changes each record in three ways:
   of every other agent. In a worker case, `subagents` is the worker.
 - `variant.plugin_dir` becomes the `--label` text, and `transcript` and `sandbox` become
   null.
-
 - A record with no `effort` takes the `effort` of `results.json`.
+- `tracker_calls` is `{total, read, write, error}`, the count of the lines in the run's
+  `gh-log.jsonl`. A run with no log gets `null`. `summary.json` gives the mean as
+  `mean_tracker_calls`. The baselines of 0.20.0 have no count, because they were made
+  before the script counted.
 
 It also writes `summary.json`. The exit code is 1 when a run has no transcript. Then that
 record has `agents: null`.
@@ -505,6 +512,10 @@ file.
 
 The report also flags each run whose `agents` cost is more than 10% from its `cost_usd`.
 The `cost_usd` still governs.
+
+When either side has `tracker_calls`, the report gives the mean tracker calls per run of
+each case, baseline against candidate. A side with no count shows `n/a`. This line is
+information only: no decision rule reads it.
 
 At 3 runs per case, a drop under about 15 points cannot be detected. The report says so.
 A `ship` verdict is not proof that no small regression exists.

@@ -99,6 +99,7 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 
 | Operation | GitHub (`gh`) | Gitea (`tea`) | Gitea MCP |
 |---|---|---|---|
+| `forge.state.read` | `python3 <plugin>/scripts/tracker-state.py [--since <ts>]` (one `gh api graphql` query) | `python3 <plugin>/scripts/tracker-state.py --forge gitea [--since <ts>]` (`tea api` REST reads) | n/a |
 | `forge.issue.list` | `gh issue list --state open --json number,title,labels,assignees,updatedAt` | `tea issues list --state open --output json --fields index,title,labels,assignees,updated` | `list_issues(state: "open")` |
 | `forge.issue.list.since` | `gh issue list --state all --search "updated:>=<ts>"` | `tea issues list --state all --from <ts> --output json` | `list_issues(since: "<ts>")` |
 | `forge.pr.list.since` | `gh pr list --state open --search "updated:>=<ts>"` | `tea issues list --kind pulls --state open --from <ts> --output json` | `list_issues(type: "pulls", since: "<ts>")` |
@@ -136,6 +137,53 @@ literally.
 a POST to a nonexistent endpoint and fails with a 404; the assignment is silent. Use `--set-assignees`
 instead. Note that `--set-assignees` replaces the entire assignee list, not append — this is
 the correct behavior for a claim lock, but it will displace any pre-existing assignee.
+
+### Tracker reads and writes
+
+**`forge.state.read` is the Stage A0 and Stage A read.** `<plugin>` is the plugin
+directory, two levels above the skill's base directory. The script prints one JSON with
+the open issues and PRs, their labels and assignees, their comments since `<ts>`, the
+items closed or merged since `<ts>`, the untriaged issues with their bodies, and the
+split-status repairs. The full output format is in the script's docstring. It replaces
+`forge.issue.list`, `forge.issue.list.since`, `forge.pr.list.since` and one
+`forge.issue.view` per item. Exit 1 means a forge call failed, and stderr names it.
+
+- **GitHub: one GraphQL query per 100 open issues.** The query reads
+  `repository.issues(states: OPEN)`, `repository.pullRequests(states: OPEN)`, and, with
+  `--since`, `issues(filterBy: {since})` for closed issues. `pullRequests` has no `since`
+  filter, so the script reads the 50 newest closed and merged PRs and filters them by
+  `updatedAt`. Each item brings its newest 20 comments. If a thread can hold more
+  comments after `<ts>` than that, the item has `commentsTruncated: true`. Then read it
+  with `forge.issue.view`.
+  Verified against the live schema by introspection on 2026-11-21, and against
+  https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api
+  (retrieved 2026-11-21): `first` must be 1–100, and a query costs at least 1 point.
+- **Gitea: REST reads through `tea api`, 50 items a page.** The script reads
+  `/repos/{owner}/{repo}/issues?state=open&type=issues`, `/repos/{owner}/{repo}/pulls?state=open`,
+  and the thread of each untriaged issue. With `--since`, it also reads
+  `/repos/{owner}/{repo}/issues?state=closed&since=<ts>` and
+  `/repos/{owner}/{repo}/issues/comments?since=<ts>`. A page with fewer than 50 items is
+  the last page. Gitea reports `mergeable` as a boolean, and the script maps it to
+  `MERGEABLE` or `CONFLICTING`. Verified against the Gitea 1.25.3 Swagger document,
+  `templates/swagger/v1_json.tmpl` at tag `v1.25.3` (retrieved 2026-11-21).
+- **No conditional (ETag) reads.** GitHub answers a REST read with an `etag`, and a `304`
+  to a matching `If-None-Match` does not count against the primary limit. A GraphQL
+  query is a POST and has no conditional form. One query in place of many reads saves
+  more than a `304` would.
+
+**Writes go one at a time, and each one does all of its work.** GitHub's secondary limit
+allows 80 content-creating requests a minute and 500 an hour, and 2,000 GraphQL points a
+minute. GitHub tells clients to send requests serially and to wait at least one second
+between writes when there are many. Source:
+https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api
+(retrieved 2026-11-21). Thus:
+
+- A status change is one `forge.issue.status.set` call, never an add and a remove.
+- `gh issue edit` and `tea issues edit` take more than one number. When issues take the
+  same label change, name them all in one call.
+- Put everything you have to say on an issue in one comment.
+- `gh issue close <n> --comment "<b>"` closes the issue and comments in one call. The
+  Gitea CLI has no such flag, so close and comment there are two calls.
 
 ### Pull requests
 

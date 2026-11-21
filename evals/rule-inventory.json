@@ -281,7 +281,12 @@
       "id": "rule-A0-943b3ad9",
       "text": "**Find what moved.** `forge.issue.list.since <LAST_SWEEP>` and `forge.pr.list.since <LAST_SWEEP>`; fetch comments **only** for those numbers (delegate long threads to a subagent).",
       "phase": "A0",
-      "source_line": 349
+      "source_line": 349,
+      "aliases": [
+        "**Find what moved, in one read.** Run the tracker-state script.",
+        "It replaces `forge.issue.list.since`, `forge.pr.list.since` and one `forge.issue.view` per item"
+      ],
+      "alias_reason": "Sniper7Kills-LLC/claude-plugins#108: tracker-state.py reads the same state in one call and keeps the comments since LAST_SWEEP; a truncated or long thread still goes to forge.issue.view."
     },
     {
       "id": "rule-A0-258af6dd",

@@ -135,7 +135,9 @@ def test_github_maps_one_pass_for_stage_a():
           f"labels and assignees are plain names, got {issues[2]}")
     check(issues[3]["status"] == ["status:in-review", "status:batched"], f"status keeps only status: labels, got {issues[3]}")
     check([c["id"] for c in issues[2]["comments"]] == [502], f"--since keeps the new comment, got {issues[2]}")
-    check(issues[1]["comments"] == [], f"--since drops a comment older than the timestamp, got {issues[1]}")
+    check([c["id"] for c in issues[1]["comments"]] == [501],
+          f"an untriaged issue keeps its whole thread, older than --since too, got {issues[1]}")
+    check(issues[1]["commentsTruncated"] is False, f"a whole untriaged thread is not truncated, got {issues[1]}")
     check(issues[3]["commentsTruncated"] is True,
           f"40 comments with all 1 fetched after --since is a truncated thread, got {issues[3]}")
     check(issues[2]["commentsTruncated"] is False, f"a complete thread is not truncated, got {issues[2]}")
@@ -193,7 +195,10 @@ def test_gitea_pages_and_maps():
     full_page = [gitea_issue(n, ["status:ready"]) for n in range(1, 51)]
     replies = {
         "issues?state=open&type=issues&limit=50&page=1": full_page,
-        "issues?state=open&type=issues&limit=50&page=2": [gitea_issue(51), gitea_issue(52, ["status:in-review", "status:batched"])],
+        "issues?state=open&type=issues&limit=50&page=2": [gitea_issue(51, comments_count=2),
+                                                           gitea_issue(52, ["status:in-review", "status:batched"])],
+        "issues/51/comments?limit=50&page=1": [gitea_comment(899, 51, "2026-11-19T00:00:00+00:00", "context"),
+                                               gitea_comment(900, 51, "2026-11-21T03:00:00+00:00", "answer")],
         "pulls?state=open&limit=50&page=1": [{
             "number": 60, "title": "PR", "draft": True, "mergeable": False, "updated_at": "2026-11-20T09:00:00+00:00",
             "base": {"ref": "batch/8-x"}, "head": {"ref": "issue/7-y"}, "labels": [], "assignees": None, "comments": 0}],
@@ -216,9 +221,11 @@ def test_gitea_pages_and_maps():
     issues = {i["number"]: i for i in state["issues"]}
     check(len(issues) == 52, f"a full page of 50 asks for the next page, got {len(issues)} issues")
     check(all(call[0] == "api" for call in stub.calls), f"every Gitea read is a tea api call, got {stub.calls}")
-    check(state["calls"] == 5, f"two issue pages, one PR page, one closed page and one comment page, got {state['calls']}")
+    check(state["calls"] == 6, f"two issue pages, one PR page, one untriaged thread, one closed page and one "
+                               f"comment page, got {state['calls']}")
     check(issues[51].get("body") == "" and state["untriaged"] == [51], f"untriaged is #51, got {state['untriaged']}")
-    check([c["id"] for c in issues[51]["comments"]] == [900], f"a repo-wide comment lands on its issue, got {issues[51]}")
+    check([c["id"] for c in issues[51]["comments"]] == [899, 900],
+          f"an untriaged issue keeps its whole thread, and the repo-wide copy adds no duplicate, got {issues[51]}")
     pr = state["prs"][0] if state["prs"] else {}
     check(pr.get("isDraft") is True and pr.get("mergeable") == "CONFLICTING" and pr.get("baseRefName") == "batch/8-x",
           f"a Gitea PR maps to the same fields as a GitHub PR, got {pr}")
