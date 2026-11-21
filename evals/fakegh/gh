@@ -522,7 +522,77 @@ def repo_view(tracker, positionals, flags):
     return "read", emit(record, flags, f"name:\t{record['nameWithOwner']}\n")
 
 
+def graphql_variables(tracker, flags):
+    """The GraphQL variables of `-f`/`-F key=value`, typed as `gh api` types `-F` values."""
+    variables = {}
+    for flag in ("--raw-field", "--field"):
+        for pair in flags.get(flag, []):
+            key, _, value = str(pair).partition("=")
+            value = value.replace("{owner}", tracker.owner).replace("{repo}", tracker.name)
+            if flag == "--field" and value in ("true", "false"):
+                value = value == "true"
+            variables[key] = value
+    return variables
+
+
+def graphql_comments(tracker, item, kind):
+    found = item.get("comments", [])
+    return {"totalCount": len(found), "nodes": [
+        {"databaseId": c["id"], "author": {"login": c.get("author", "")}, "createdAt": c.get("createdAt", ""),
+         "body": c.get("body", ""), "url": tracker.comment_json(item, c, kind)["url"]} for c in found[-20:]]}
+
+
+def graphql_node(tracker, item, kind):
+    node = {"number": item["number"], "title": item.get("title", ""), "updatedAt": item.get("updatedAt", ""),
+            "labels": {"nodes": [{"name": name} for name in item.get("labels", [])]},
+            "assignees": {"nodes": [{"login": login} for login in item.get("assignees", [])]},
+            "comments": graphql_comments(tracker, item, kind)}
+    if kind == "prs":
+        node.update(isDraft=item.get("isDraft", False), baseRefName=item.get("baseRefName", ""),
+                    headRefName=item.get("headRefName", ""), mergeable=item.get("mergeable", "MERGEABLE"))
+    else:
+        node["body"] = item.get("body", "")
+    return node
+
+
+def graphql(tracker, flags):
+    """Answer the TrackerState query of issue-flow/scripts/tracker-state.py, and no other.
+
+    The fake does not parse GraphQL. It recognizes the query by its name and returns
+    every item on one page, so `hasNextPage` is always false.
+    """
+    variables = graphql_variables(tracker, flags)
+    query = variables.pop("query", "")
+    if "query TrackerState" not in query:
+        raise Refused("gh api graphql is not supported by the eval fake, except the TrackerState query "
+                      "of tracker-state.py")
+    since = variables.get("since") or ""
+    done = {"hasNextPage": False, "endCursor": None}
+    repository = {}
+    if variables.get("withIssues"):
+        repository["issues"] = {"pageInfo": done, "nodes": [
+            graphql_node(tracker, item, "issues") for item in tracker.state["issues"]
+            if item.get("state", "open") == "open"]}
+    if variables.get("withPrs"):
+        repository["pullRequests"] = {"pageInfo": done, "nodes": [
+            graphql_node(tracker, item, "prs") for item in tracker.state["prs"]
+            if item.get("state", "open") == "open"]}
+    if variables.get("withSince"):
+        # ISO 8601 times in UTC with a Z compare correctly as text.
+        repository["closedIssues"] = {"nodes": [
+            {"number": i["number"], "title": i.get("title", ""), "updatedAt": i.get("updatedAt", "")}
+            for i in tracker.state["issues"] if i.get("state") == "closed" and i.get("updatedAt", "") >= since]}
+        closed = sorted((p for p in tracker.state["prs"] if p.get("state") in ("closed", "merged")),
+                        key=lambda p: p.get("updatedAt", ""), reverse=True)
+        repository["closedPullRequests"] = {"nodes": [
+            {"number": p["number"], "title": p.get("title", ""), "state": p["state"].upper(),
+             "updatedAt": p.get("updatedAt", "")} for p in closed[:50]]}
+    return {"data": {"repository": repository}}
+
+
 def api(tracker, positionals, flags):
+    if positionals[:1] == ["graphql"]:
+        return "read", emit(graphql(tracker, flags), flags)
     method = str(one(flags, "--method", "GET")).upper()
     has_fields = "--field" in flags or "--raw-field" in flags or "--input" in flags
     if method != "GET" or (has_fields and "--method" not in flags):
