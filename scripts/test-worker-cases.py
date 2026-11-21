@@ -329,6 +329,47 @@ def test_acceptance_criteria_parser():
           f"the parser reads only the acceptance-criteria list, got {runner.acceptance_criteria(tracker, 4)}")
 
 
+def test_fake_gh_worker_subcommands():
+    work = tempfile.mkdtemp(prefix="fakegh-worker-")
+    try:
+        state = {"repo": {"owner": "acme", "name": "inventory", "defaultBranch": "main"}, "user": "eval-bot",
+                 "labels": [{"name": "status:in-review", "color": "", "description": ""}],
+                 "issues": [], "prs": [{"number": 9, "title": "WIP", "body": "old", "state": "open",
+                                        "isDraft": True, "headRefName": "issue/1-x", "baseRefName": "main",
+                                        "labels": [], "comments": [],
+                                        "reviews": [{"author": {"login": "bob"}, "state": "COMMENTED"}]}]}
+        with open(os.path.join(work, "tracker.json"), "w") as handle:
+            json.dump(state, handle)
+        env = dict(os.environ, IFE_TRACKER=os.path.join(work, "tracker.json"),
+                   IFE_GH_LOG=os.path.join(work, "gh-log.jsonl"))
+        fake = os.path.join(EVALS, "fakegh", "gh")
+
+        def gh(*args):
+            return subprocess.run([sys.executable, fake, *args], capture_output=True, text=True, env=env, cwd=work)
+
+        result = gh("pr", "edit", "9", "--title", "Fix it", "--body", "new", "--add-label", "status:in-review")
+        check(result.returncode == 0, f"pr edit exits 0, got {result.returncode}: {result.stderr}")
+        with open(os.path.join(work, "tracker.json")) as handle:
+            pr = json.load(handle)["prs"][0]
+        check((pr["title"], pr["body"], pr["labels"]) == ("Fix it", "new", ["status:in-review"]),
+              f"pr edit changes the title, the body and the labels, got {pr}")
+        result = gh("pr", "edit", "issue/1-x", "--body", "by branch")
+        check(result.returncode == 0, f"pr edit finds a PR by its head branch, got {result.stderr}")
+        result = gh("api", "repos/{owner}/{repo}/pulls/9/comments")
+        check(result.returncode == 0 and json.loads(result.stdout or "null") == [],
+              f"api reads the review comments of a PR, got {result.stdout!r} {result.stderr!r}")
+        result = gh("api", "repos/{owner}/{repo}/pulls/9/reviews")
+        check(result.returncode == 0 and len(json.loads(result.stdout or "[]")) == 1,
+              f"api reads the reviews of a PR, got {result.stdout!r} {result.stderr!r}")
+        with open(os.path.join(work, "gh-log.jsonl")) as handle:
+            log = [json.loads(line) for line in handle]
+        check([e["kind"] for e in log] == ["write", "write", "read", "read"],
+              f"the log records pr edit as a write and the api reads as reads, got {log}")
+        check(log[0].get("body") == "new", f"the log keeps the body of pr edit, got {log[0]}")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 # ---------------------------------------------------------------- end to end
 
 FAKE_CLAUDE = r'''#!/usr/bin/env python3
@@ -417,7 +458,8 @@ def test_golden_worker_passes_every_case():
 
 for test in (test_suite_shape, test_fixture_tests_pass, test_reference_check, test_path_allowed,
              test_acceptance_criteria_parser, test_graders_on_a_clear_case,
-             test_graders_on_the_ambiguous_case, test_do_nothing_worker_fails_every_case,
+             test_graders_on_the_ambiguous_case, test_fake_gh_worker_subcommands,
+             test_do_nothing_worker_fails_every_case,
              test_golden_worker_passes_every_case):
     try:
         test()
