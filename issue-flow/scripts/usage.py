@@ -13,7 +13,7 @@ each subagent of that session is <session-id>/subagents/agent-<agentId>.jsonl. T
 entry format is internal to Claude Code and can change, so the parser skips any
 line or shape it does not know.
 
-What real transcripts show (checked on 3295 assistant entries, Claude Code 2.1):
+What real transcripts show (checked on 3295 assistant entries on 2026-11-21):
 
 - One API response is written as one line per content block. Every line repeats the
   same `message.usage` and the same `requestId`. The script counts each `requestId`
