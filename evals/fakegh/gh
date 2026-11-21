@@ -432,15 +432,15 @@ def pr_create(tracker, positionals, flags):
 
 def pr_edit(tracker, positionals, flags):
     """Change the title, body, base or labels of one PR, found by number or by head branch."""
-    if not positionals:
-        raise Refused("pr edit needs a number or a branch")
-    item = tracker.find_pr(positionals[0])
+    # Without an argument, gh edits the PR of the current branch.
+    item = tracker.find_pr(positionals[0] if positionals else current_branch())
     add, remove = split_values(flags, "--add-label"), split_values(flags, "--remove-label")
     missing = [label for label in add if label not in tracker.label_names()]
     if missing:
         raise Refused(f"'{missing[0]}' not found")
-    item["labels"] = [label for label in item.get("labels", []) + [l for l in add if l not in item.get("labels", [])]
-                      if label not in remove]
+    labels = item.setdefault("labels", [])
+    labels.extend(label for label in add if label not in labels)
+    item["labels"] = [label for label in labels if label not in remove]
     for flag, key in (("--title", "title"), ("--base", "baseRefName")):
         if flag in flags:
             item[key] = one(flags, flag)
