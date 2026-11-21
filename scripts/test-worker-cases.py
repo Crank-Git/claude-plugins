@@ -173,7 +173,7 @@ def test_reference_check():
             changed = git(repo, "diff", "--name-only").stdout.split() + \
                 git(repo, "ls-files", "--others", "--exclude-standard").stdout.split()
             changed = [p for p in changed if not os.path.basename(p).startswith("hidden_test")]
-            allow = graders_of(case, "diff_scope")[0]["allow"]
+            allow = graders_of(case, "diff_scope")[0]["allow"] + case.get("docs_paths", [])
             runner = load_runner()
             outside = [p for p in changed if not runner.path_allowed(p, allow)]
             check(not outside, f"{name}: reference.patch stays inside the allowlist, outside: {outside}")
@@ -317,6 +317,70 @@ def test_graders_on_the_ambiguous_case():
         check(passed is False and "commit" in detail, f"no_commits fails on a guessed commit, got {detail!r}")
     finally:
         shutil.rmtree(sandbox, ignore_errors=True)
+
+
+# localChecks texts that report a failing pre-patch run in other words. The first is from
+# worker-easy-low-stock-boundary run 1 of #111's candidate, which the old grader failed.
+PREPATCH_WORDINGS = (
+    "python3 -m unittest: 13 tests passed. No lint, typecheck or build step exists. tdd: the new "
+    "boundary test failed before the fix (['A2'] != ['A2','H1']) and passes after it",
+    "python3 -m unittest: 12 passed; pre-patch: 2 new tests fail as expected",
+    "Prepatch run: 3 new tests FAILED",
+    "the new tests fail without the change (ImportError on parse_price)",
+    "on the pre-fix code the 2 new tests failed",
+    "the new tests failed on the unpatched code",
+)
+# localChecks texts that do not report a failing pre-patch run.
+NO_PREPATCH = (
+    "python3 -m unittest: 12 passed",
+    "pre-patch: not run",
+    "the tests pass before and after the fix",
+    "one old test failed and I fixed it",
+)
+
+
+def test_verdict_accepts_equivalent_prepatch_wording():
+    case = next(c for c in worker_cases() if not is_ambiguous(c))
+    runner, sandbox, repo, ctx = sandbox_for(case)
+    try:
+        grader = graders_of(case, "verdict")[0]
+        for text in PREPATCH_WORDINGS:
+            write_verdict(repo, dict(golden_verdict(case), localChecks=text))
+            passed, detail, _ = run_grader(runner, grader, ctx)
+            check(passed is True, f"verdict accepts the pre-patch wording {text[-60:]!r}, got {detail!r}")
+        for text in NO_PREPATCH:
+            write_verdict(repo, dict(golden_verdict(case), localChecks=text))
+            passed, detail, _ = run_grader(runner, grader, ctx)
+            check(passed is False and "pre-patch" in detail, f"verdict refuses {text!r}, got {detail!r}")
+    finally:
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+
+def test_diff_scope_allows_the_docs_of_every_case():
+    """A worker that also updates the docs that its brief requires passes diff_scope in every case."""
+    for case in worker_cases():
+        if is_ambiguous(case):
+            continue
+        name = case["name"]
+        check("README.md" in case.get("docs_paths", []),
+              f"{name}: docs_paths holds README.md, got {case.get('docs_paths')}")
+        number = issue_of(case)
+        runner, sandbox, repo, ctx = sandbox_for(case)
+        try:
+            with open(os.path.join(repo, "README.md")) as handle:
+                readme = handle.read()
+            commit_patch(repo, f"issue/{number}-docs", os.path.join(case["dir"], "reference.patch"),
+                         {"README.md": readme + "\nThe changed interface is documented here.\n"})
+            scope = graders_of(case, "diff_scope")[0]
+            passed, detail, _ = run_grader(runner, scope, ctx)
+            check(passed is True, f"{name}: diff_scope allows README.md next to the fix, got {detail!r}")
+            git(repo, "branch", "-q", "-D", f"issue/{number}-docs")
+            commit_patch(repo, f"issue/{number}-notes", None, {"NOTES.md": "x\n"})
+            passed, detail, _ = run_grader(runner, scope, ctx)
+            check(passed is False and "NOTES.md" in detail,
+                  f"{name}: diff_scope still refuses other paths, got {detail!r}")
+        finally:
+            shutil.rmtree(sandbox, ignore_errors=True)
 
 
 def test_path_allowed():
@@ -479,6 +543,7 @@ def test_golden_worker_passes_every_case():
 
 for test in (test_suite_shape, test_fixture_tests_pass, test_reference_check, test_path_allowed,
              test_acceptance_criteria_parser, test_graders_on_a_clear_case,
+             test_verdict_accepts_equivalent_prepatch_wording, test_diff_scope_allows_the_docs_of_every_case,
              test_graders_on_the_ambiguous_case, test_fake_gh_worker_subcommands,
              test_do_nothing_worker_fails_every_case,
              test_golden_worker_passes_every_case):
