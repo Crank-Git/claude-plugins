@@ -437,8 +437,8 @@ costs one turn and is always the cheaper error.
 
 1. **Research & implement** the issue per the packet, the plan, and the repo's
    conventions. Read the batch findings log first (see above) — before you plan your
-   edits, not after. Run the project's tests/linters as you go. Commit in logical units referencing `#<number>`;
-   when `ci: skip`, end **every** commit message you push with `[skip ci]`.
+   edits, not after. Run the project's tests/linters as you go. Commit in logical units
+   referencing `#<number>`; when `ci: skip`, end **every** commit message you push with `[skip ci]`.
 
    **Build vertically, not horizontally.** When the issue crosses layers (data → service
    → API → UI), build one thin end-to-end slice first — a stubbed endpoint, the minimal
