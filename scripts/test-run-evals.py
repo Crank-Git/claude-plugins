@@ -202,7 +202,7 @@ if judge:
                       "duration_ms": 10, "session_id": "judge"}))
     sys.exit(0)
 for call in json.loads(os.environ.get("FAKE_PM_ACTIONS", "[]")):
-    subprocess.run(["gh", *call])
+    subprocess.run(["gh", *call], stdout=subprocess.DEVNULL)
 for path, text in json.loads(os.environ.get("FAKE_PM_FILES", "{}")).items():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as handle:
@@ -329,7 +329,9 @@ def test_runner_happy_path():
             check(not main[0]["cwd"].startswith(ROOT) and not main[0]["cwd"].startswith(root),
                   f"claude runs in a temp sandbox, got {main[0]['cwd']}")
             remotes = main[0]["remotes"].split()
-            check(len(remotes) >= 2 and remotes[0] == "origin" and os.path.isdir(remotes[1]),
+            check(len(remotes) == 6 and remotes[0] == "origin"
+                  and os.path.realpath(remotes[1])
+                  == os.path.join(os.path.dirname(os.path.realpath(main[0]["cwd"])), "origin.git"),
                   f"the only remote is a local bare repo, got {main[0]['remotes']!r}")
             check(main[0]["GH_TOKEN"] and main[0]["GH_TOKEN"] != os.environ.get("GH_TOKEN"),
                   "GH_TOKEN is a fake token, so a real gh cannot authenticate")
@@ -420,7 +422,7 @@ def test_real_pm_suite():
 
     root = tempfile.mkdtemp(prefix="run-evals-test-")
     try:
-        result, results, captures = run_runner(root, {}, "--evals-dir", EVALS)
+        result, results, captures = run_runner(root, {}, "--evals-dir", EVALS, "--runs", "1")
         records = (results or {}).get("records", [])
         check(len(records) == len(cases), f"every real case runs with the fake claude, got {len(records)} {result.stderr}")
         check(all(r["error"] is None for r in records), f"no real case errors, got {[r['error'] for r in records]}")
@@ -429,8 +431,53 @@ def test_real_pm_suite():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def repair(number, removed, kept):
+    return [["issue", "edit", str(number), "--remove-label", removed],
+            ["issue", "comment", str(number), "--body", f"status repair: removed {removed}, kept {kept}"]]
+
+
+# What a correct PM does in each real case. It proves that each case can pass.
+GOLDEN = {
+    "pm-triage": ([["issue", "edit", "1", "--add-label", "status:ready"],
+                   ["issue", "edit", "2", "--add-label", "status:needs-feedback"],
+                   ["issue", "comment", "2", "--body", "Which command shows the wrong number?"]], {}),
+    "pm-c1-unevidenced": ([], {".eval/send-back-11.md":
+                               "Criterion `--json and --verbose cannot be combined` has no evidence."}),
+    "pm-c1-no-prepatch": ([], {".eval/send-back-11.md": "localChecks has no pre-patch run."}),
+    "pm-a0-split-status": (repair(21, "status:in-review", "status:needs-feedback")
+                           + repair(22, "status:in-review", "status:batched")
+                           + repair(24, "status:ready", "status:blocked"), {}),
+    "pm-batch-cross-check": ([["issue", "comment", "30", "--body", "finding: batch cross-check, batch #30\n\nClean."],
+                              ["issue", "edit", "31", "--add-label", "status:in-progress",
+                               "--remove-label", "status:ready"]],
+                             {".eval/brief-31.md":
+                              "crossCheck: https://github.com/acme/widgets/issues/30#issuecomment-3202\n"}),
+    "pm-semantic-conflict": ([["issue", "comment", "40", "--body", "finding: batch cross-check, batch #40"],
+                              ["issue", "edit", "41", "42", "--add-label", "status:needs-feedback",
+                               "--remove-label", "status:ready"],
+                              ["issue", "comment", "41", "--body", "Reject or queue?"],
+                              ["issue", "comment", "42", "--body", "Reject or queue?"]], {}),
+}
+
+
+def test_real_cases_can_pass():
+    names = [case["name"] for case in load_runner().load_cases(EVALS, "pm")]
+    check(sorted(names) == sorted(GOLDEN), f"every real case has a golden run, got {names}")
+    for name, (actions, files) in GOLDEN.items():
+        root = tempfile.mkdtemp(prefix="run-evals-test-")
+        try:
+            result, results, _ = run_runner(
+                root, {"FAKE_PM_ACTIONS": json.dumps(actions), "FAKE_PM_FILES": json.dumps(files)},
+                "--evals-dir", EVALS, "--case", name, "--runs", "1")
+            records = (results or {}).get("records", [])
+            check(records and records[0]["ok"] and records[0]["score"] == 1.0,
+                  f"{name}: the golden run passes, got {records[0]['graders'] if records else result.stderr}")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
 for test in (test_fake_gh, test_runner_happy_path, test_runner_failures_and_ceiling,
-             test_ordered_and_model, test_real_pm_suite):
+             test_ordered_and_model, test_real_pm_suite, test_real_cases_can_pass):
     try:
         test()
     except Exception as error:  # a crash in one test must not hide the others
