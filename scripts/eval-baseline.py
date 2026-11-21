@@ -87,6 +87,8 @@ def summarize(records):
                            round(max(r.get("wall_s", r.get("duration_s")) or 0 for r in records), 1)],
         "mean_main_tokens": mean(r["tokens"]["main"] for r in with_tokens),
         "mean_subagent_tokens": mean(r["tokens"]["subagents"] for r in with_tokens),
+        "mean_subagent_turns": mean(sum(a["turns"] for a in r["agents"]["agents"] if a["type"] != "main")
+                                    for r in with_tokens),
         "mean_agent_cost_usd": mean((r.get("agents") or {}).get("totals", {}).get("cost_usd") for r in records),
         "errors": sum(1 for r in records if r.get("error")),
     }

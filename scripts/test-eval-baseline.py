@@ -108,6 +108,7 @@ def test_annotate_strip_and_summary():
     check("summary: wall time is the duration of a run that has it", case["mean_duration_s"] == 200.0, case)
     check("summary: mean main and subagent tokens",
           case["mean_main_tokens"] == 68000 and case["mean_subagent_tokens"] == 218030, case)
+    check("summary: mean subagent turns", case["mean_subagent_turns"] == 5, case)
     check("summary: the models of the suite", summary["models"] == ["claude-haiku-5-5", "claude-opus-5-5"],
           summary.get("models"))
     check("summary: the total cost", abs(summary["total_cost_usd"] - 0.60) < 1e-9, summary)
