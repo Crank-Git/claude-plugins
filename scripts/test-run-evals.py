@@ -422,7 +422,7 @@ def test_real_pm_suite():
 
     root = tempfile.mkdtemp(prefix="run-evals-test-")
     try:
-        result, results, captures = run_runner(root, {}, "--evals-dir", EVALS, "--runs", "1")
+        result, results, captures = run_runner(root, {}, "--evals-dir", EVALS, "--tag", "pm", "--runs", "1")
         records = (results or {}).get("records", [])
         check(len(records) == len(cases), f"every real case runs with the fake claude, got {len(records)} {result.stderr}")
         check(all(r["error"] is None for r in records), f"no real case errors, got {[r['error'] for r in records]}")
