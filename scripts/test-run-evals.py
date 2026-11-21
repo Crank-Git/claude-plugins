@@ -378,6 +378,17 @@ def test_runner_failures_and_ceiling():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_args_anchor_ignores_body_lines():
+    runner = load_runner()
+    entry = {"seq": 1, "cmd": "issue comment", "kind": "write",
+             "argv": ["issue", "comment", "2", "--body", "Questions:\n1. Which command?\n4. How often?"],
+             "body": "Questions:\n1. Which command?\n4. How often?"}
+    check(not runner.matches({"cmd": "issue comment", "args": r"^4\b"}, entry),
+          "an args ^ anchors at the start of the arguments, not at a line of the body")
+    check(runner.matches({"cmd": "issue comment", "args": r"^2\b"}, entry), "an args ^ matches the issue number")
+    check(runner.matches({"cmd": "issue comment", "body": r"^4\. How"}, entry), "a body ^ still matches each line")
+
+
 def test_ordered_and_model():
     root = tempfile.mkdtemp(prefix="run-evals-test-")
     try:
@@ -479,7 +490,8 @@ def test_real_cases_can_pass():
 
 
 for test in (test_fake_gh, test_runner_happy_path, test_runner_failures_and_ceiling,
-             test_ordered_and_model, test_real_pm_suite, test_real_cases_can_pass):
+             test_args_anchor_ignores_body_lines, test_ordered_and_model, test_real_pm_suite,
+             test_real_cases_can_pass):
     try:
         test()
     except Exception as error:  # a crash in one test must not hide the others

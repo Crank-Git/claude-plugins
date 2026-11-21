@@ -130,9 +130,10 @@ changes `score`, not `ok`.
 
 - `cmd` is the subcommand, for example `issue edit` or `pr merge`. For `gh api` it is `api`.
 - `args` is a regular expression. It is matched against the arguments after `cmd`, joined
-  with spaces.
+  with spaces. `^` anchors only at the start of the arguments, never at a line of an inline
+  body.
 - `body` is a regular expression. It is matched against the comment or body text of the
-  call, including text from `--body-file`.
+  call, including text from `--body-file`. Here `^` anchors at the start of each line.
 - Each `expect` entry must match a call that succeeded. With `"ordered": true`, the
   entries must match in the order given.
 - No `forbid` entry may match any call. A call that the fake refused also counts, because
@@ -256,8 +257,9 @@ A real run on Claude Code 2.1.330 (2026-11-21) confirmed the field names: `total
 `usage.input_tokens`, `usage.output_tokens`, `usage.cache_read_input_tokens`,
 `usage.cache_creation_input_tokens`, `modelUsage`, `num_turns`, `duration_ms` and
 `session_id`. The result also has `subagent_stats`, a count of the subagents the run
-spawned. That run spawned no subagent, so the subagent part of `total_cost_usd` comes from
-the documentation only.
+spawned. In the 0.20.0 baseline, two runs spawned a Haiku cross-check subagent. In both
+runs, `total_cost_usd` was the sum of the `modelUsage` costs, with the Haiku cost included
+(`pm-batch-cross-check` run 3: $0.63783 total = $0.63542 Opus + $0.00240 Haiku).
 
 The ceiling works in two places:
 
@@ -266,6 +268,37 @@ The ceiling works in two places:
    more runs.
 2. Each run gets the rest of the budget as its own `--max-budget-usd`, so one run cannot
    go far past the ceiling.
+
+## Baselines
+
+`evals/baselines/<version>/<suite>/` keeps the results of a release, so that a later change
+can be compared with it. Each directory holds:
+
+- `results.json`, in the runner's format. Before commit, `variant.plugin_dir`, `transcript`
+  and `sandbox` are cleared, because they hold local paths. `session_id` stays.
+- `summary.json`, with the means per case.
+- Any superseded runs, with the reason.
+
+### 0.20.0, PM suite
+
+The runs were on 2026-11-21, with Claude Code 2.1.330 and the default model
+(claude-opus-5-5): 6 cases, 3 runs each, at concurrency 1. Total cost: $10.00, judges
+included.
+
+| Case | ok rate | Mean score | Mean cost | Mean turns | Mean duration |
+|---|---|---|---|---|---|
+| `pm-a0-split-status` | 3/3 | 1.00 | $0.42 | 5.0 | 19.6 s |
+| `pm-batch-cross-check` | 3/3 | 1.00 | $0.63 | 9.0 | 59.6 s |
+| `pm-c1-no-prepatch` | 3/3 | 1.00 | $0.47 | 5.7 | 34.3 s |
+| `pm-c1-unevidenced` | 3/3 | 1.00 | $0.45 | 5.0 | 24.2 s |
+| `pm-semantic-conflict` | 3/3 | 1.00 | $0.49 | 5.3 | 32.5 s |
+| `pm-triage` | 3/3 | 1.00 | $0.44 | 6.0 | 20.3 s |
+
+The first 3 runs of `pm-triage` failed because of a grader error, not a PM error. The
+`args` regex was matched with `re.M`, so the forbid entry `^4\b` (issue #4) matched a line
+`4. How often …` in the body of the comment on #2. The fix: `args` now anchors at the
+start of the arguments only, and `body` still matches line by line. `pm-triage` then ran
+3 more times. `superseded-pm-triage.json` keeps the first 3 runs.
 
 ## Tests
 

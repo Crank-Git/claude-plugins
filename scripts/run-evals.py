@@ -195,7 +195,8 @@ def log_text(entry):
 def matches(spec, entry):
     if entry.get("cmd") != spec.get("cmd"):
         return False
-    if "args" in spec and not re.search(spec["args"], log_text(entry), re.M):
+    # No re.M here: the args text holds the body lines too, and `^` must anchor at the issue number.
+    if "args" in spec and not re.search(spec["args"], log_text(entry)):
         return False
     if "body" in spec and not re.search(spec["body"], entry.get("body") or "", re.M):
         return False
