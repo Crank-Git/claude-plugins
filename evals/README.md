@@ -25,6 +25,8 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | `evals/pm/_fixture/` | The git repo that the PM cases start from. A directory without `case.json` is not a case. |
 | `evals/worker/<case>/` | The worker cases (Sniper7Kills-LLC/claude-plugins#103). |
 | `evals/results/` | Run results. Git ignores this directory. |
+| `evals/baselines/<version>/` | Committed baseline run records and summaries, for example `0.20.0/pm/`. |
+| `evals/rule-inventory.json` | The rule inventory of the PM `SKILL.md` at 0.20.0. `python3 scripts/rule-coverage.py extract` makes it, and `check` verifies a skill tree against it (Sniper7Kills-LLC/claude-plugins#104). |
 
 ## How to run
 
