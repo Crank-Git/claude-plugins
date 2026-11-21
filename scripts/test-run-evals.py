@@ -142,6 +142,8 @@ def test_fake_gh():
         result = gh(work, "pr", "merge", "9", "--squash", "--subject", "s", "--body", "[skip ci]")
         pr = [p for p in read_tracker(work)["prs"] if p["number"] == 9]
         check(result.returncode == 0 and pr and pr[0]["state"] == "merged", f"pr merge marks the PR merged, got {pr}")
+        result = gh(work, "pr", "list", "--state", "closed", "--json", "number")
+        check(json.loads(result.stdout or "null") == [{"number": 9}], f"pr list --state closed includes a merged PR, got {result.stdout!r}")
 
         result = gh(work, "pr", "list", "--head", "issue/2-better", "--state", "open", "--json", "number")
         check(json.loads(result.stdout or "null") == [{"number": 7}], f"pr list filters by head, got {result.stdout!r}")

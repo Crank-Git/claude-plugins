@@ -321,7 +321,8 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
     if model:
         claude_args += ["--model", model]
     if budget_left is not None:
-        claude_args += ["--max-budget-usd", f"{budget_left:.2f}"]
+        # A cap that rounds to 0.00 would stop the run before its first request.
+        claude_args += ["--max-budget-usd", f"{max(budget_left, 0.01):.2f}"]
     if case.get("disallowed_tools"):
         claude_args += ["--disallowedTools", ",".join(case["disallowed_tools"])]
 

@@ -260,7 +260,8 @@ def filter_items(tracker, kind, flags):
     found = []
     for item in tracker.state[kind]:
         item_state = item.get("state", "open")
-        if state != "all" and item_state != state:
+        # GitHub lists a merged PR under --state closed as well as --state merged.
+        if state != "all" and item_state != state and not (state == "closed" and item_state == "merged"):
             continue
         if any(label not in item.get("labels", []) for label in labels):
             continue
