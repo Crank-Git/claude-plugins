@@ -92,7 +92,7 @@ EXPECTED = {
 pricing = usage.load_pricing()
 report = usage.build_report([TRANSCRIPT], pricing)
 
-check("top-level keys", sorted(report), ["agents", "totals", "pricing_date"])
+check("top-level keys", sorted(report), ["agents", "pricing_date", "totals"])
 check("pricing_date matches pricing.json", report["pricing_date"], pricing["retrieved"])
 if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(report["pricing_date"])):
     fail(f"pricing_date must be YYYY-MM-DD, got {report['pricing_date']!r}")
