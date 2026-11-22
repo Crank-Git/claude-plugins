@@ -615,6 +615,10 @@ swap on #51, and #63 made ready after the merge. They forbid any claim, launch o
 of #52. A `file` grader reads the send-back message for #52. The `llm` grader judges the
 plans and the triage questions.
 
+The case forbids every spawn, so the prompt gives the criteria checker's verdict for #51
+(C1 step 1c) in place of a spawn. Without it, the PM of Sniper7Kills-LLC/claude-plugins#119
+held #51 at step 1c in 3 of 3 runs.
+
 In this test, `gh pr merge` changes only the tracker, and the remote holds no commits of
 the workers. The prompt tells the PM so, and tells it to skip the C1 step 4b check of the
 landed message.
