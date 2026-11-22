@@ -522,7 +522,7 @@ GOLDEN = {
           "prompt": "issue: #11\nbase: origin/issue/11-json-flag\nescalation: re-check failed. Criterion 2 unmet."}]),
     "pm-c1-feedback-no-escalation": (
         [["issue", "edit", "11", "--add-label", "status:needs-feedback", "--remove-label", "status:in-review"],
-         ["issue", "comment", "11", "--body", "Should `--json --verbose` print both, or exit 2?"]], {}, []),
+         ["issue", "comment", "11", "--body", "Should `count` reject `--json --verbose`, or add a `debug` key like `list`?"]], {}, []),
 }
 
 
