@@ -555,8 +555,8 @@ def test_real_cases_can_pass():
 
 # A PM that is almost right in a checkpoint case: each one breaks one rule of SKILL.md C1.
 def checkpoint_near_misses():
-    plain_actions, _, (plain_spawns,) = GOLDEN["pm-c1-checkpoint"]
-    escalated_actions, _, (escalated_spawns,) = GOLDEN["pm-c1-escalated-checkpoint"]
+    plain_actions, _, plain_spawns = GOLDEN["pm-c1-checkpoint"]
+    escalated_actions, _, escalated_spawns = GOLDEN["pm-c1-escalated-checkpoint"]
     opus = escalated_spawns[0]
     sonnet = {key: value for key, value in opus.items() if key != "model"}
     relabel = ["issue", "edit", "11", "--add-label", "status:in-progress", "--remove-label", "status:in-review"]

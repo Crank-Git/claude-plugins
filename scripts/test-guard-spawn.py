@@ -365,6 +365,9 @@ expect(
     worker(None, NO_ESCALATION + "Note: no escalation: yet.\n"),
     False,
 )
+PLACEHOLDER = NO_ESCALATION + "escalation:   <only on the Opus escalation spawn>\n"
+expect("the template's escalation placeholder is not an escalation", worker(None, PLACEHOLDER), False)
+expect("the template's escalation placeholder does not allow Opus", worker("opus", PLACEHOLDER), True)
 expect(
     "ISSUE_FLOW_MODEL_GUARD=off allows an escalation brief with no model",
     worker(None, ESCALATED),
